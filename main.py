@@ -166,49 +166,49 @@ def download_media_ytdlp(
     os.makedirs(output_dir, exist_ok=True)
     unique_prefix = uuid4().hex[:8]
     ydl_initial_info_opts = {
-    "quiet": True,
-    "no_warnings": True,
-    "simulate": True,
-    "extract_flat": False,
-    "useragent": USER_AGENT_YTDLP,
-    "skip_download": True,
-    "verbose": False,
-    "cookiefile": "cookies.txt",
-  }
-  try:
-    with yt_dlp.YoutubeDL(ydl_initial_info_opts) as ydl_info_fetch:
-      media_info = ydl_info_fetch.extract_info(url, download=False)
-    if not media_info:
-      return False, "Could not retrieve media information.", None, None
-  except yt_dlp.utils.DownloadError as e:
-    err_msg = str(e).lower()
-    if "429" in err_msg or "too many requests" in err_msg:
-      return (
-          False,
-          "Instagram vaqtincha so‘rovlarni chekladi (429). Birozdan so‘ng qayta"
-          " urining.",
-          None,
-          None,
-      )
-    if "unsupported url" in err_msg:
-      return False, "Invalid or unsupported URL.", None, None
-    return False, f"Error fetching media info: {e}", None, None
-  except Exception as e:
-    print(f"Unexpected YTDLP info error for {url} (User: {user_id}): {e}")
-    return False, f"Unexpected error fetching media info: {e}", None, None
+  "quiet": True,
+  "no_warnings": True,
+  "simulate": True,
+  "extract_flat": False,
+  "useragent": USER_AGENT_YTDLP,
+  "skip_download": True,
+  "verbose": False,
+  "cookiefile": "cookies.txt",
+}
+try:
+  with yt_dlp.YoutubeDL(ydl_initial_info_opts) as ydl_info_fetch:
+    media_info = ydl_info_fetch.extract_info(url, download=False)
+  if not media_info:
+    return False, "Could not retrieve media information.", None, None
+except yt_dlp.utils.DownloadError as e:
+  err_msg = str(e).lower()
+  if "429" in err_msg or "too many requests" in err_msg:
+    return False, "Instagram vaqtincha so‘rovlarni chekladi (429). Birozdan so‘ng qayta urining.", None, None
+  if "unsupported url" in err_msg:
+    return False, "Invalid or unsupported URL.", None, None
+  return False, f"Error fetching media info: {e}", None, None
+except Exception as e:
+  print(f"Unexpected YTDLP info error for {url} (User: {user_id}): {e}")
+  return False, f"Unexpected error fetching media info: {e}", None, None
 
-  title = media_info.get("title", "media")
-  sanitized_title = sanitize_filename(title)
-  base_filename = f"{unique_prefix}_{sanitized_title}"
-  ydl_download_opts = {
-      "quiet": True,
-      "no_warnings": True,
-      "useragent": USER_AGENT_YTDLP,
-      "retries": MAX_RETRIES_YTDLP,
-      "fragment_retries": MAX_RETRIES_YTDLP,
-      "retry_sleep_functions": {
-          "http": lambda n: RETRY_DELAY_YTDLP,
-          "fragment": lambda n: RETRY_DELAY_YTDLP,
+title = media_info.get("title", "media")
+sanitized_title = sanitize_filename(title)
+base_filename = f"{unique_prefix}_{sanitized_title}"
+ydl_download_opts = {
+  "quiet": True,
+  "no_warnings": True,
+  "useragent": USER_AGENT_YTDLP,
+  "retries": MAX_RETRIES_YTDLP,
+  "fragment_retries": MAX_RETRIES_YTDLP,
+  "retry_sleep_functions": {
+    "http": lambda n: RETRY_DELAY_YTDLP,
+    "fragment": lambda n: RETRY_DELAY_YTDLP,
+  },
+  "outtmpl": os.path.join(output_dir, f"{base_filename}.%(ext)s"),
+  "cookiefile": "cookies.txt",
+}
+if format_choice == "video":
+  ydl_download_opts["format"] = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bestvideo+bestaudio/best"
       },
       "outtmpl": os.path.join(output_dir, f"{base_filename}.%(ext)s"),
       "cookiefile": "cookies.txt",

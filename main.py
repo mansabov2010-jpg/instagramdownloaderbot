@@ -175,18 +175,18 @@ def download_media_ytdlp(
     "verbose": False,
     "cookiefile": "cookies.txt",
   }
-  try:
-    with yt_dlp.YoutubeDL(ydl_initial_info_opts) as ydl_info_fetch:
-      media_info = ydl_info_fetch.extract_info(url, download=False)
-    if not media_info:
-      return False, "Could not retrieve media information.", None, None
-      return (
-          False,
-          "Instagram vaqtincha so‘rovlarni chekladi (429). Birozdan so‘ng qayta"
-          " urining.",
-          None,
-          None,
-      )
+   try:
+     with yt_dlp.YoutubeDL(ydl_initial_info_opts) as ydl_info_fetch:
+       media_info = ydl_info_fetch.extract_info(url, download=False)
+     if not media_info:
+       return False, "Could not retrieve media information.", None, None
+       return (
+           False,
+           "Instagram vaqtincha so‘rovlarni chekladi (429). Birozdan so‘ng qayta"
+           " urining.",
+           None,
+           None,
+       )
     if "unsupported url" in err_msg:
       return False, "Invalid or unsupported URL.", None, None
     return False, f"Error fetching media info: {e}", None, None

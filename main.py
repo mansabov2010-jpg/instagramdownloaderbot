@@ -181,6 +181,8 @@ def download_media_ytdlp(
             return False, "Could not retrieve media information.", None, None
     except yt_dlp.utils.DownloadError as e:
         err_msg = str(e).lower()
+        if "429" in err_msg or "too many requests" in err_msg:
+            return False, "Instagram vaqtincha so‘rovlarni chekladi (429). Birozdan so‘ng qayta urining.", None, None
         if "unsupported url" in err_msg:
             return False, "Invalid or unsupported URL.", None, None
         return False, f"Error fetching media info: {e}", None, None
@@ -274,6 +276,9 @@ def download_media_ytdlp(
         )
     except yt_dlp.utils.DownloadError as e:
         print(f"ERROR: YTDLP DownloadError for {url} (User: {user_id}): {e}")
+              err_msg = str(e).lower()
+        if "429" in err_msg or "too many requests" in err_msg:
+            return False, "Instagram vaqtincha so‘rovlarni chekladi (429). Birozdan so‘ng qayta urining.", None, media_info
         return False, f"Failed to download: {e}", None, media_info
     except Exception as e:
         print(f"ERROR: Unexpected YTDLP error for {url} (User: {user_id}): {e}")

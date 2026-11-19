@@ -276,7 +276,7 @@ def download_media_ytdlp(
         )
     except yt_dlp.utils.DownloadError as e:
         print(f"ERROR: YTDLP DownloadError for {url} (User: {user_id}): {e}")
-              err_msg = str(e).lower()
+        err_msg = str(e).lower()
         if "429" in err_msg or "too many requests" in err_msg:
             return False, "Instagram vaqtincha so‘rovlarni chekladi (429). Birozdan so‘ng qayta urining.", None, media_info
         return False, f"Failed to download: {e}", None, media_info

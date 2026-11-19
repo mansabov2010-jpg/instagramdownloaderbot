@@ -180,9 +180,6 @@ def download_media_ytdlp(
       media_info = ydl_info_fetch.extract_info(url, download=False)
     if not media_info:
       return False, "Could not retrieve media information.", None, None
-  except yt_dlp.utils.DownloadError as e:
-    err_msg = str(e).lower()
-    if "429" in err_msg or "too many requests" in err_msg:
       return (
           False,
           "Instagram vaqtincha so‘rovlarni chekladi (429). Birozdan so‘ng qayta"

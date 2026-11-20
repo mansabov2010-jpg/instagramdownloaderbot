@@ -741,7 +741,7 @@ async def download_format_callback(update: Update, context: ContextTypes.DEFAULT
                 query.message.chat_id,
                 "Error: URL context lost. Please send the link again.",
             )
-   return
+    return
     user_id = user.id
     role = get_user_role(user_id, context, user)
     await context.application.persistence.flush()

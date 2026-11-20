@@ -198,6 +198,10 @@ try:
         with yt_dlp.YoutubeDL(ydl_initial_info_opts) as ydl_info_fetch:
             media_info = ydl_info_fetch.extract_info(url, download=False)
 
+try:
+        with yt_dlp.YoutubeDL(ydl_initial_info_opts) as ydl_info_fetch:
+            media_info = ydl_info_fetch.extract_info(url, download=False)
+
         if not media_info:
             return False, "Could not retrieve media information.", None, None
     except Exception as e:

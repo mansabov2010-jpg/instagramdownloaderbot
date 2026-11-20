@@ -204,9 +204,13 @@ def download_media_ytdlp(
         "outtmpl": os.path.join(output_dir, f"{base_filename}.%(ext)s"),
     }
     if format_choice == "video":
-        ydl_download_opts["format"] = "best[ext=mp4]/best"
         if FFMPEG_AVAILABLE:
+            ydl_download_opts["format"] = (
+                "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best"
+            )
             ydl_download_opts["merge_output_format"] = "mp4"
+        else:
+            ydl_download_opts["format"] = "best[ext=mp4]/best"
     elif format_choice == "audio":
         ydl_download_opts["format"] = "bestaudio/best"
 

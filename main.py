@@ -211,7 +211,7 @@ if format_choice == "video":
                 ydl_download_opts["merge_output_format"] = "mp4"
             else:
                 ydl_download_opts["format"] = "best[ext=mp4]/best"
-        elif format_choice == "audio":
+elif format_choice == "audio":
             ydl_download_opts["format"] = "bestaudio/best"
 
         predicted_path = None

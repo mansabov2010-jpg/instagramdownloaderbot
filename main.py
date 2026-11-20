@@ -175,7 +175,7 @@ def download_media_ytdlp(
     "verbose": False,
     "cookiefile": "cookies.txt",
   }
- try:
+  try:
      with yt_dlp.YoutubeDL(ydl_initial_info_opts) as ydl_info_fetch:
        media_info = ydl_info_fetch.extract_info(url, download=False)
      if not media_info:

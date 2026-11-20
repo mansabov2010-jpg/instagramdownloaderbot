@@ -166,39 +166,16 @@ def download_media_ytdlp(
     os.makedirs(output_dir, exist_ok=True)
     unique_prefix = uuid4().hex[:8]
     ydl_initial_info_opts = {
-    "quiet": True,
-    "no_warnings": True,
-    "simulate": True,
-    "extract_flat": False,
-    "useragent": USER_AGENT_YTDLP,
-    "skip_download": True,
-    "verbose": False,
-    "cookiefile": "cookies.txt",
-  }
-try:
-    with yt_dlp.YoutubeDL(ydl_initial_info_opts) as ydl_info_fetch:
-        media_info = ydl_info_fetch.extract_info(url, download=False)
-
-    if not media_info:
-        return False, "Could not retrieve media information.", None, None
-except Exception as e:
-    err_msg = str(e).lower()
-    if "429" in err_msg or "rate limit" in err_msg or "too many requests" in err_msg:
-        return (
-            False,
-            "Instagram vaqtincha so‘rovlarni chekladi (429). Birozdan so‘ng qayta urining.",
-            None,
-            None,
-        )
-    if "unsupported url" in err_msg:
-        return False, "Invalid or unsupported URL.", None, None
-    return False, f"Error fetching media info: {e}", None, None
-
-try:
-        with yt_dlp.YoutubeDL(ydl_initial_info_opts) as ydl_info_fetch:
-            media_info = ydl_info_fetch.extract_info(url, download=False)
-
-try:
+        "quiet": True,
+        "no_warnings": True,
+        "simulate": True,
+        "extract_flat": False,
+        "useragent": USER_AGENT_YTDLP,
+        "skip_download": True,
+        "verbose": False,
+        "cookiefile": "cookies.txt",
+    }
+    try:
         with yt_dlp.YoutubeDL(ydl_initial_info_opts) as ydl_info_fetch:
             media_info = ydl_info_fetch.extract_info(url, download=False)
 
@@ -241,14 +218,7 @@ try:
             ydl_download_opts["merge_output_format"] = "mp4"
     elif format_choice == "audio":
         ydl_download_opts["format"] = "bestaudio/best"
-    if format_choice == "video":
-        ydl_download_opts["format"] = (
-            "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bestvideo+bestaudio/best"
-        )
-        if FFMPEG_AVAILABLE:
-            ydl_download_opts["merge_output_format"] = "mp4"
-    elif format_choice == "audio":
-        ydl_download_opts["format"] = "bestaudio/best"
+
     predicted_path = None
     try:
         temp_sim_opts = ydl_download_opts.copy()
@@ -468,7 +438,7 @@ async def _is_user_in_channel(
                 f"WARNING: Failed to check membership for user {user_id} in {channel_identifier}: {e}"
             )
         return False
-
+      
 
 # --- Command Handlers ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -771,7 +741,7 @@ async def download_format_callback(update: Update, context: ContextTypes.DEFAULT
                 query.message.chat_id,
                 "Error: URL context lost. Please send the link again.",
             )
-        return
+   return
     user_id = user.id
     role = get_user_role(user_id, context, user)
     await context.application.persistence.flush()
@@ -782,7 +752,7 @@ async def download_format_callback(update: Update, context: ContextTypes.DEFAULT
             )
         except TelegramError:
             pass
-            return
+        return
     is_admin = user_id in ADMIN_IDS
     is_premium_active = False
     if context.user_data.get("is_premium"):
@@ -800,7 +770,7 @@ async def download_format_callback(update: Update, context: ContextTypes.DEFAULT
                 )
             except TelegramError:
                 pass
-                return
+            return
         if not check_and_update_daily_limit(user_id, context):
             try:
                 await query.edit_message_text(
@@ -808,7 +778,7 @@ async def download_format_callback(update: Update, context: ContextTypes.DEFAULT
                 )
             except TelegramError:
                 pass
-                return
+            return
         standard_user_limit_decremented_this_attempt = True
         await context.application.persistence.flush()
 
@@ -950,7 +920,7 @@ async def premium_tier_callback(update: Update, context: ContextTypes.DEFAULT_TY
             await query.edit_message_text("Invalid tier.")
         except TelegramError:
             pass
-            return
+        return
     info = PREMIUM_PRICES[tier_key]
     payload = f"premium_{tier_key}_{query.from_user.id}_{uuid4().hex[:6]}"
     prices = [LabeledPrice(label=info["title"], amount=info["stars"])]

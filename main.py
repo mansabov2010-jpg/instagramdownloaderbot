@@ -64,7 +64,7 @@ OWNER_ID = 123456789  # Replace with your actual Telegram user ID
 ADMIN_IDS = [7986354170, 7637155944]  # Replace with actual admin user IDs
 
 # Bot Settings
-SUPPORT_CONTACT = "@Yegerist_mvp"
+SUPPORT_CONTACT = "@FairyRoot"
 DOWNLOAD_DIR = "bot_downloads"
 
 # User Roles
@@ -173,26 +173,20 @@ def download_media_ytdlp(
         "useragent": USER_AGENT_YTDLP,
         "skip_download": True,
         "verbose": False,
-        "cookiefile": "cookies.txt",
     }
     try:
         with yt_dlp.YoutubeDL(ydl_initial_info_opts) as ydl_info_fetch:
             media_info = ydl_info_fetch.extract_info(url, download=False)
-
         if not media_info:
             return False, "Could not retrieve media information.", None, None
-    except Exception as e:
+    except yt_dlp.utils.DownloadError as e:
         err_msg = str(e).lower()
-        if "429" in err_msg or "rate limit" in err_msg or "too many requests" in err_msg:
-            return (
-                False,
-                "Instagram vaqtincha so‘rovlarni chekladi (429). Birozdan so‘ng qayta urining.",
-                None,
-                None,
-            )
         if "unsupported url" in err_msg:
             return False, "Invalid or unsupported URL.", None, None
         return False, f"Error fetching media info: {e}", None, None
+    except Exception as e:
+        print(f"Unexpected YTDLP info error for {url} (User: {user_id}): {e}")
+        return False, f"Unexpected error fetching media info: {e}", None, None
 
     title = media_info.get("title", "media")
     sanitized_title = sanitize_filename(title)
@@ -208,7 +202,6 @@ def download_media_ytdlp(
             "fragment": lambda n: RETRY_DELAY_YTDLP,
         },
         "outtmpl": os.path.join(output_dir, f"{base_filename}.%(ext)s"),
-        "cookiefile": "cookies.txt",
     }
     if format_choice == "video":
         ydl_download_opts["format"] = (
@@ -281,9 +274,6 @@ def download_media_ytdlp(
         )
     except yt_dlp.utils.DownloadError as e:
         print(f"ERROR: YTDLP DownloadError for {url} (User: {user_id}): {e}")
-        err_msg = str(e).lower()
-        if "429" in err_msg or "too many requests" in err_msg:
-            return False, "Instagram vaqtincha so‘rovlarni chekladi (429). Birozdan so‘ng qayta urining.", None, media_info
         return False, f"Failed to download: {e}", None, media_info
     except Exception as e:
         print(f"ERROR: Unexpected YTDLP error for {url} (User: {user_id}): {e}")
@@ -438,7 +428,7 @@ async def _is_user_in_channel(
                 f"WARNING: Failed to check membership for user {user_id} in {channel_identifier}: {e}"
             )
         return False
-      
+
 
 # --- Command Handlers ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -741,7 +731,7 @@ async def download_format_callback(update: Update, context: ContextTypes.DEFAULT
                 query.message.chat_id,
                 "Error: URL context lost. Please send the link again.",
             )
-    return
+        return
     user_id = user.id
     role = get_user_role(user_id, context, user)
     await context.application.persistence.flush()
@@ -752,7 +742,7 @@ async def download_format_callback(update: Update, context: ContextTypes.DEFAULT
             )
         except TelegramError:
             pass
-        return
+            return
     is_admin = user_id in ADMIN_IDS
     is_premium_active = False
     if context.user_data.get("is_premium"):
@@ -770,7 +760,7 @@ async def download_format_callback(update: Update, context: ContextTypes.DEFAULT
                 )
             except TelegramError:
                 pass
-            return
+                return
         if not check_and_update_daily_limit(user_id, context):
             try:
                 await query.edit_message_text(
@@ -778,7 +768,7 @@ async def download_format_callback(update: Update, context: ContextTypes.DEFAULT
                 )
             except TelegramError:
                 pass
-            return
+                return
         standard_user_limit_decremented_this_attempt = True
         await context.application.persistence.flush()
 
@@ -920,7 +910,7 @@ async def premium_tier_callback(update: Update, context: ContextTypes.DEFAULT_TY
             await query.edit_message_text("Invalid tier.")
         except TelegramError:
             pass
-        return
+            return
     info = PREMIUM_PRICES[tier_key]
     payload = f"premium_{tier_key}_{query.from_user.id}_{uuid4().hex[:6]}"
     prices = [LabeledPrice(label=info["title"], amount=info["stars"])]

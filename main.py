@@ -188,7 +188,7 @@ def download_media_ytdlp(
         print(f"Unexpected YTDLP info error for {url} (User: {user_id}): {e}")
         return False, f"Unexpected error fetching media info: {e}", None, None
 
-    title = media_info.get("title", "media")
+  title = media_info.get("title", "media")
     sanitized_title = sanitize_filename(title)
     base_filename = f"{unique_prefix}_{sanitized_title}"
     ydl_download_opts = {
@@ -206,7 +206,7 @@ def download_media_ytdlp(
     if format_choice == "video":
         if FFMPEG_AVAILABLE:
             ydl_download_opts["format"] = (
-                "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best"
+                "bestvideo*+bestaudio*/bestvideo+bestaudio/best[ext=mp4]/best"
             )
             ydl_download_opts["merge_output_format"] = "mp4"
         else:
@@ -239,7 +239,6 @@ def download_media_ytdlp(
         predicted_path = os.path.join(output_dir, f"{base_filename}.{ext}")
 
     hook_data = {"actual_path": None}
-
     def _hook(d):
         if d["status"] == "finished":
             hook_data["actual_path"] = d["filename"]

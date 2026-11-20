@@ -231,7 +231,7 @@ try:
                         "ext", "mp4" if format_choice == "video" else "m4a"
                     )
                     predicted_path = os.path.join(output_dir, f"{base_filename}.{ext}")
-        except Exception as e_sim:
+except Exception as e_sim:
             print(
                 f"WARNING: Filename prediction via simulation failed: {e_sim}. Using fallback."
             )

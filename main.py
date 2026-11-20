@@ -215,11 +215,11 @@ elif format_choice == "audio":
             ydl_download_opts["format"] = "bestaudio/best"
 
 predicted_path = None
-        try:
-            temp_sim_opts = ydl_download_opts.copy()
-            temp_sim_opts.update(
-                {"simulate": True, "skip_download": True, "quiet": True, "verbose": False}
-            )
+try:
+    temp_sim_opts = ydl_download_opts.copy()
+    temp_sim_opts.update(
+         {"simulate": True, "skip_download": True, "quiet": True, "verbose": False}
+     )
             with yt_dlp.YoutubeDL(temp_sim_opts) as ydl_sim:
                 sim_info = ydl_sim.extract_info(url, download=False)
                 if sim_info and sim_info.get("requested_downloads"):

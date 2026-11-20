@@ -64,7 +64,7 @@ OWNER_ID = 123456789  # Replace with your actual Telegram user ID
 ADMIN_IDS = [7986354170, 7637155944]  # Replace with actual admin user IDs
 
 # Bot Settings
-SUPPORT_CONTACT = "@FairyRoot"
+SUPPORT_CONTACT = "@Yegerist_mvp"
 DOWNLOAD_DIR = "bot_downloads"
 
 # User Roles

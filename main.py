@@ -194,7 +194,26 @@ except Exception as e:
         return False, "Invalid or unsupported URL.", None, None
     return False, f"Error fetching media info: {e}", None, None
 
-title = media_info.get("title", "media")
+try:
+        with yt_dlp.YoutubeDL(ydl_initial_info_opts) as ydl_info_fetch:
+            media_info = ydl_info_fetch.extract_info(url, download=False)
+
+        if not media_info:
+            return False, "Could not retrieve media information.", None, None
+    except Exception as e:
+        err_msg = str(e).lower()
+        if "429" in err_msg or "rate limit" in err_msg or "too many requests" in err_msg:
+            return (
+                False,
+                "Instagram vaqtincha so‘rovlarni chekladi (429). Birozdan so‘ng qayta urining.",
+                None,
+                None,
+            )
+        if "unsupported url" in err_msg:
+            return False, "Invalid or unsupported URL.", None, None
+        return False, f"Error fetching media info: {e}", None, None
+
+    title = media_info.get("title", "media")
     sanitized_title = sanitize_filename(title)
     base_filename = f"{unique_prefix}_{sanitized_title}"
     ydl_download_opts = {
@@ -210,6 +229,14 @@ title = media_info.get("title", "media")
         "outtmpl": os.path.join(output_dir, f"{base_filename}.%(ext)s"),
         "cookiefile": "cookies.txt",
     }
+    if format_choice == "video":
+        ydl_download_opts["format"] = (
+            "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bestvideo+bestaudio/best"
+        )
+        if FFMPEG_AVAILABLE:
+            ydl_download_opts["merge_output_format"] = "mp4"
+    elif format_choice == "audio":
+        ydl_download_opts["format"] = "bestaudio/best"
     if format_choice == "video":
         ydl_download_opts["format"] = (
             "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bestvideo+bestaudio/best"

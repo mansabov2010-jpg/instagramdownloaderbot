@@ -214,7 +214,7 @@ if format_choice == "video":
 elif format_choice == "audio":
             ydl_download_opts["format"] = "bestaudio/best"
 
-        predicted_path = None
+predicted_path = None
         try:
             temp_sim_opts = ydl_download_opts.copy()
             temp_sim_opts.update(

@@ -237,7 +237,7 @@ except Exception as e_sim:
             )
             ext = media_info.get("ext", "mp4" if format_choice == "video" else "m4a")
             predicted_path = os.path.join(output_dir, f"{base_filename}.{ext}")
-        hook_data = {"actual_path": None}
+  hook_data = {"actual_path": None}
 
         def _hook(d):
             if d["status"] == "finished":
@@ -278,7 +278,6 @@ except Exception as e_sim:
         except Exception as e:
             print(f"ERROR: Unexpected YTDLP error for {url} (User: {user_id}): {e}")
             return False, f"Unexpected download error: {type(e).__name__}", None, media_info
-
 # --- User & Role Management ---
 def get_user_role(
     user_id_to_check: int,

@@ -194,31 +194,30 @@ except Exception as e:
         return False, "Invalid or unsupported URL.", None, None
     return False, f"Error fetching media info: {e}", None, None
 
-  title = media_info.get("title", "media")
-  sanitized_title = sanitize_filename(title)
-  base_filename = f"{unique_prefix}_{sanitized_title}"
-  ydl_download_opts = {
-      "quiet": True,
-      "no_warnings": True,
-      "useragent": USER_AGENT_YTDLP,
-      "retries": MAX_RETRIES_YTDLP,
-      "fragment_retries": MAX_RETRIES_YTDLP,
-      "retry_sleep_functions": {
-          "http": lambda n: RETRY_DELAY_YTDLP,
-          "fragment": lambda n: RETRY_DELAY_YTDLP,
-      },
-      "outtmpl": os.path.join(output_dir, f"{base_filename}.%(ext)s"),
-      "cookiefile": "cookies.txt",
-  }
-  if format_choice == "video":
-    ydl_download_opts["format"] = (
-        "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bestvideo+bestaudio/best"
-    )
+title = media_info.get("title", "media")
+    sanitized_title = sanitize_filename(title)
+    base_filename = f"{unique_prefix}_{sanitized_title}"
+    ydl_download_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "useragent": USER_AGENT_YTDLP,
+        "retries": MAX_RETRIES_YTDLP,
+        "fragment_retries": MAX_RETRIES_YTDLP,
+        "retry_sleep_functions": {
+            "http": lambda n: RETRY_DELAY_YTDLP,
+            "fragment": lambda n: RETRY_DELAY_YTDLP,
+        },
+        "outtmpl": os.path.join(output_dir, f"{base_filename}.%(ext)s"),
+        "cookiefile": "cookies.txt",
+    }
+    if format_choice == "video":
+        ydl_download_opts["format"] = (
+            "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bestvideo+bestaudio/best"
+        )
         if FFMPEG_AVAILABLE:
             ydl_download_opts["merge_output_format"] = "mp4"
     elif format_choice == "audio":
         ydl_download_opts["format"] = "bestaudio/best"
-
     predicted_path = None
     try:
         temp_sim_opts = ydl_download_opts.copy()

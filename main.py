@@ -175,24 +175,24 @@ def download_media_ytdlp(
     "verbose": False,
     "cookiefile": "cookies.txt",
   }
-  try:
-     with yt_dlp.YoutubeDL(ydl_initial_info_opts) as ydl_info_fetch:
-       media_info = ydl_info_fetch.extract_info(url, download=False)
-     if not media_info:
-       return False, "Could not retrieve media information.", None, None
-       return (
-           False,
-           "Instagram vaqtincha so‘rovlarni chekladi (429). Birozdan so‘ng qayta"
-           " urining.",
-           None,
-           None,
-       )
+try:
+    with yt_dlp.YoutubeDL(ydl_initial_info_opts) as ydl_info_fetch:
+        media_info = ydl_info_fetch.extract_info(url, download=False)
+
+    if not media_info:
+        return False, "Could not retrieve media information.", None, None
+except Exception as e:
+    err_msg = str(e).lower()
+    if "429" in err_msg or "rate limit" in err_msg or "too many requests" in err_msg:
+        return (
+            False,
+            "Instagram vaqtincha so‘rovlarni chekladi (429). Birozdan so‘ng qayta urining.",
+            None,
+            None,
+        )
     if "unsupported url" in err_msg:
-      return False, "Invalid or unsupported URL.", None, None
+        return False, "Invalid or unsupported URL.", None, None
     return False, f"Error fetching media info: {e}", None, None
-  except Exception as e:
-    print(f"Unexpected YTDLP info error for {url} (User: {user_id}): {e}")
-    return False, f"Unexpected error fetching media info: {e}", None, None
 
   title = media_info.get("title", "media")
   sanitized_title = sanitize_filename(title)

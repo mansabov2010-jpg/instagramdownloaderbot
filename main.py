@@ -204,9 +204,7 @@ def download_media_ytdlp(
         "outtmpl": os.path.join(output_dir, f"{base_filename}.%(ext)s"),
     }
     if format_choice == "video":
-        ydl_download_opts["format"] = (
-            "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bestvideo+bestaudio/best"
-        )
+        ydl_download_opts["format"] = "best[ext=mp4]/best"
         if FFMPEG_AVAILABLE:
             ydl_download_opts["merge_output_format"] = "mp4"
     elif format_choice == "audio":
@@ -245,7 +243,6 @@ def download_media_ytdlp(
     ydl_download_opts.update(
         {"progress_hooks": [_hook], "quiet": False, "verbose": False}
     )
-
     try:
         with yt_dlp.YoutubeDL(ydl_download_opts) as ydl:
             ydl.download([url])

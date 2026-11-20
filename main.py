@@ -237,11 +237,11 @@ except Exception as e_sim:
             )
             ext = media_info.get("ext", "mp4" if format_choice == "video" else "m4a")
             predicted_path = os.path.join(output_dir, f"{base_filename}.{ext}")
-  hook_data = {"actual_path": None}
+hook_data = {"actual_path": None}
 
-        def _hook(d):
-            if d["status"] == "finished":
-                hook_data["actual_path"] = d["filename"]
+def _hook(d):
+     if d["status"] == "finished":
+         hook_data["actual_path"] = d["filename"]
 
         ydl_download_opts.update(
             {"progress_hooks": [_hook], "quiet": False, "verbose": False}

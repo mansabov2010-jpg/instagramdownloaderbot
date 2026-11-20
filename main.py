@@ -216,16 +216,16 @@ elif format_choice == "audio":
 
 predicted_path = None
 try:
-    temp_sim_opts = ydl_download_opts.copy()
-    temp_sim_opts.update(
-         {"simulate": True, "skip_download": True, "quiet": True, "verbose": False}
-     )
-     with yt_dlp.YoutubeDL(temp_sim_opts) as ydl_sim:
-        sim_info = ydl_sim.extract_info(url, download=False)
-       if sim_info and sim_info.get("requested_downloads"):
-            predicted_path = sim_info["requested_downloads"][0]["filepath"]
-         elif sim_info and sim_info.get("filename"):
-           predicted_path = sim_info["filename"]
+            temp_sim_opts = ydl_download_opts.copy()
+            temp_sim_opts.update(
+                {"simulate": True, "skip_download": True, "quiet": True, "verbose": False}
+            )
+            with yt_dlp.YoutubeDL(temp_sim_opts) as ydl_sim:
+                sim_info = ydl_sim.extract_info(url, download=False)
+                if sim_info and sim_info.get("requested_downloads"):
+                    predicted_path = sim_info["requested_downloads"][0]["filepath"]
+                elif sim_info and sim_info.get("filename"):
+                    predicted_path = sim_info["filename"]
                 else:
                     ext = media_info.get(
                         "ext", "mp4" if format_choice == "video" else "m4a"
@@ -237,7 +237,6 @@ try:
             )
             ext = media_info.get("ext", "mp4" if format_choice == "video" else "m4a")
             predicted_path = os.path.join(output_dir, f"{base_filename}.{ext}")
-
         hook_data = {"actual_path": None}
 
         def _hook(d):

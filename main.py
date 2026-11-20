@@ -220,12 +220,12 @@ try:
     temp_sim_opts.update(
          {"simulate": True, "skip_download": True, "quiet": True, "verbose": False}
      )
-            with yt_dlp.YoutubeDL(temp_sim_opts) as ydl_sim:
-                sim_info = ydl_sim.extract_info(url, download=False)
-                if sim_info and sim_info.get("requested_downloads"):
-                    predicted_path = sim_info["requested_downloads"][0]["filepath"]
-                elif sim_info and sim_info.get("filename"):
-                    predicted_path = sim_info["filename"]
+     with yt_dlp.YoutubeDL(temp_sim_opts) as ydl_sim:
+        sim_info = ydl_sim.extract_info(url, download=False)
+       if sim_info and sim_info.get("requested_downloads"):
+            predicted_path = sim_info["requested_downloads"][0]["filepath"]
+         elif sim_info and sim_info.get("filename"):
+           predicted_path = sim_info["filename"]
                 else:
                     ext = media_info.get(
                         "ext", "mp4" if format_choice == "video" else "m4a"

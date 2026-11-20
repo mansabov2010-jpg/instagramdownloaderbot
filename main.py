@@ -190,8 +190,8 @@ def download_media_ytdlp(
 
 title = media_info.get("title", "media")
 sanitized_title = sanitize_filename(title)
-        base_filename = f"{unique_prefix}_{sanitized_title}"
-        ydl_download_opts = {
+base_filename = f"{unique_prefix}_{sanitized_title}"
+ydl_download_opts = {
         "quiet": True,
         "no_warnings": True,
         "useragent": USER_AGENT_YTDLP,

@@ -204,81 +204,81 @@ ydl_download_opts = {
         "outtmpl": os.path.join(output_dir, f"{base_filename}.%(ext)s"),
     }
 if format_choice == "video":
-        if FFMPEG_AVAILABLE:
-            ydl_download_opts["format"] = (
-                "bestvideo*+bestaudio*/bestvideo+bestaudio/best[ext=mp4]/best"
-            )
-            ydl_download_opts["merge_output_format"] = "mp4"
-        else:
-            ydl_download_opts["format"] = "best[ext=mp4]/best"
-    elif format_choice == "audio":
-        ydl_download_opts["format"] = "bestaudio/best"
-
-    predicted_path = None
-    try:
-        temp_sim_opts = ydl_download_opts.copy()
-        temp_sim_opts.update(
-            {"simulate": True, "skip_download": True, "quiet": True, "verbose": False}
-        )
-        with yt_dlp.YoutubeDL(temp_sim_opts) as ydl_sim:
-            sim_info = ydl_sim.extract_info(url, download=False)
-            if sim_info and sim_info.get("requested_downloads"):
-                predicted_path = sim_info["requested_downloads"][0]["filepath"]
-            elif sim_info and sim_info.get("filename"):
-                predicted_path = sim_info["filename"]
-            else:
-                ext = media_info.get(
-                    "ext", "mp4" if format_choice == "video" else "m4a"
+            if FFMPEG_AVAILABLE:
+                ydl_download_opts["format"] = (
+                    "bestvideo*+bestaudio*/bestvideo+bestaudio/best[ext=mp4]/best"
                 )
-                predicted_path = os.path.join(output_dir, f"{base_filename}.{ext}")
-    except Exception as e_sim:
-        print(
-            f"WARNING: Filename prediction via simulation failed: {e_sim}. Using fallback."
-        )
-        ext = media_info.get("ext", "mp4" if format_choice == "video" else "m4a")
-        predicted_path = os.path.join(output_dir, f"{base_filename}.{ext}")
+                ydl_download_opts["merge_output_format"] = "mp4"
+            else:
+                ydl_download_opts["format"] = "best[ext=mp4]/best"
+        elif format_choice == "audio":
+            ydl_download_opts["format"] = "bestaudio/best"
 
-    hook_data = {"actual_path": None}
-    def _hook(d):
-        if d["status"] == "finished":
-            hook_data["actual_path"] = d["filename"]
+        predicted_path = None
+        try:
+            temp_sim_opts = ydl_download_opts.copy()
+            temp_sim_opts.update(
+                {"simulate": True, "skip_download": True, "quiet": True, "verbose": False}
+            )
+            with yt_dlp.YoutubeDL(temp_sim_opts) as ydl_sim:
+                sim_info = ydl_sim.extract_info(url, download=False)
+                if sim_info and sim_info.get("requested_downloads"):
+                    predicted_path = sim_info["requested_downloads"][0]["filepath"]
+                elif sim_info and sim_info.get("filename"):
+                    predicted_path = sim_info["filename"]
+                else:
+                    ext = media_info.get(
+                        "ext", "mp4" if format_choice == "video" else "m4a"
+                    )
+                    predicted_path = os.path.join(output_dir, f"{base_filename}.{ext}")
+        except Exception as e_sim:
+            print(
+                f"WARNING: Filename prediction via simulation failed: {e_sim}. Using fallback."
+            )
+            ext = media_info.get("ext", "mp4" if format_choice == "video" else "m4a")
+            predicted_path = os.path.join(output_dir, f"{base_filename}.{ext}")
 
-    ydl_download_opts.update(
-        {"progress_hooks": [_hook], "quiet": False, "verbose": False}
-    )
-    try:
-        with yt_dlp.YoutubeDL(ydl_download_opts) as ydl:
-            ydl.download([url])
-        final_path_to_check = None
-        actual_hook_path_val = hook_data["actual_path"]
-        if actual_hook_path_val and os.path.exists(actual_hook_path_val):
-            final_path_to_check = actual_hook_path_val
-        elif predicted_path and os.path.exists(predicted_path):
-            final_path_to_check = predicted_path
-        else:
-            possible_files = [
-                f for f in os.listdir(output_dir) if f.startswith(base_filename)
-            ]
-            if possible_files:
-                final_path_to_check = os.path.join(output_dir, possible_files[0])
-        if final_path_to_check and os.path.exists(final_path_to_check):
-            return True, "Download successful.", final_path_to_check, media_info
-        print(
-            f"ERROR: Download finished but final file not confirmed. Predicted='{predicted_path}', Hook='{actual_hook_path_val}'"
-        )
-        return (
-            False,
-            "Download completed, but final file path not confirmed.",
-            None,
-            media_info,
-        )
-    except yt_dlp.utils.DownloadError as e:
-        print(f"ERROR: YTDLP DownloadError for {url} (User: {user_id}): {e}")
-        return False, f"Failed to download: {e}", None, media_info
-    except Exception as e:
-        print(f"ERROR: Unexpected YTDLP error for {url} (User: {user_id}): {e}")
-        return False, f"Unexpected download error: {type(e).__name__}", None, media_info
+        hook_data = {"actual_path": None}
 
+        def _hook(d):
+            if d["status"] == "finished":
+                hook_data["actual_path"] = d["filename"]
+
+        ydl_download_opts.update(
+            {"progress_hooks": [_hook], "quiet": False, "verbose": False}
+        )
+        try:
+            with yt_dlp.YoutubeDL(ydl_download_opts) as ydl:
+                ydl.download([url])
+            final_path_to_check = None
+            actual_hook_path_val = hook_data["actual_path"]
+            if actual_hook_path_val and os.path.exists(actual_hook_path_val):
+                final_path_to_check = actual_hook_path_val
+            elif predicted_path and os.path.exists(predicted_path):
+                final_path_to_check = predicted_path
+            else:
+                possible_files = [
+                    f for f in os.listdir(output_dir) if f.startswith(base_filename)
+                ]
+                if possible_files:
+                    final_path_to_check = os.path.join(output_dir, possible_files[0])
+            if final_path_to_check and os.path.exists(final_path_to_check):
+                return True, "Download successful.", final_path_to_check, media_info
+            print(
+                f"ERROR: Download finished but final file not confirmed. Predicted='{predicted_path}', Hook='{actual_hook_path_val}'"
+            )
+            return (
+                False,
+                "Download completed, but final file path not confirmed.",
+                None,
+                media_info,
+            )
+        except yt_dlp.utils.DownloadError as e:
+            print(f"ERROR: YTDLP DownloadError for {url} (User: {user_id}): {e}")
+            return False, f"Failed to download: {e}", None, media_info
+        except Exception as e:
+            print(f"ERROR: Unexpected YTDLP error for {url} (User: {user_id}): {e}")
+            return False, f"Unexpected download error: {type(e).__name__}", None, media_info
 
 # --- User & Role Management ---
 def get_user_role(

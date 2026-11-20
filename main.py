@@ -203,7 +203,7 @@ ydl_download_opts = {
         },
         "outtmpl": os.path.join(output_dir, f"{base_filename}.%(ext)s"),
     }
-    if format_choice == "video":
+if format_choice == "video":
         if FFMPEG_AVAILABLE:
             ydl_download_opts["format"] = (
                 "bestvideo*+bestaudio*/bestvideo+bestaudio/best[ext=mp4]/best"

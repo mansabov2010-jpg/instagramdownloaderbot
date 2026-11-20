@@ -212,8 +212,8 @@ Your support is appreciated:
 
 ## Author
 
--   **GitHub**: [FairyRoot](https://github.com/fairy-root)
--   **Telegram**: [@FairyRoot](https://t.me/FairyRoot)
+-   **GitHub**: [@Yegerist_mvp](https://github.com/Yegerist-mvp)
+-   **Telegram**: [@Yegerist_mvp](https://t.me/Yegerist_mvp)
 
 ## Contributing
 

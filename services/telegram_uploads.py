@@ -11,7 +11,6 @@ from config import Settings
 from services.cooldown import CooldownManager
 from services.parsing import extract_link_text, is_probable_youtube_url, parse_user_input
 from services.request_store import RequestStore
-from services.telegram_uploads import upload_artifact
 from services.ytdlp import (
     build_direct_options,
     build_quick_youtube_options,

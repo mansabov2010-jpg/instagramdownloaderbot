@@ -19,6 +19,17 @@ AUDIO_EXTENSIONS = {"mp3", "m4a", "aac", "wav", "flac", "opus", "weba"}
 logger = logging.getLogger(__name__)
 _COOKIE_FILE_PATH: Path | None = None
 
+# Bir vaqtda nechta yt-dlp ishlashi mumkin (Render'ning kuchsiz CPU/RAM uchun)
+_MAX_PARALLEL_DOWNLOADS = 2
+_DOWNLOAD_SEM: asyncio.Semaphore | None = None
+
+
+def _download_sem() -> asyncio.Semaphore:
+    global _DOWNLOAD_SEM
+    if _DOWNLOAD_SEM is None:
+        _DOWNLOAD_SEM = asyncio.Semaphore(_MAX_PARALLEL_DOWNLOADS)
+    return _DOWNLOAD_SEM
+
 
 def _is_youtube_url(url: str) -> bool:
     host = (urlparse(url).hostname or "").lower()
@@ -50,7 +61,19 @@ def _get_cookies_file(settings: Settings) -> Path | None:
 
 
 def _command_base(parsed_input: ParsedInput, settings: Settings) -> list[str]:
-    command = ["yt-dlp", "--no-warnings", "--no-playlist"]
+    command = [
+        "yt-dlp",
+        "--no-warnings",
+        "--no-playlist",
+        # Qotib qolmaslik uchun vaqt chegaralari va qayta urinishlar
+        "--socket-timeout", "20",
+        "--retries", "3",
+        "--fragment-retries", "3",
+        "--extractor-retries", "2",
+        # Bo'lakli (HLS/DASH) videolarni parallel yuklash
+        "--concurrent-fragments", "4",
+        "--no-mtime",
+    ]
     if _is_youtube_url(parsed_input.source_url):
         command.extend(["--extractor-args", "youtube:player_client=tv_embedded,mweb,web"])
     cookies_file = _get_cookies_file(settings)
@@ -73,7 +96,19 @@ async def _run_command(command: list[str], cwd: Path | None = None) -> tuple[str
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    stdout, stderr = await process.communicate()
+    try:
+        stdout, stderr = await process.communicate()
+    except asyncio.CancelledError:
+        # Vaqt tugasa yoki bekor qilinsa, yt-dlp jarayonini ham o'chiramiz
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+        try:
+            await process.wait()
+        except Exception:
+            pass
+        raise
     if process.returncode != 0:
         error_text = stderr.decode(errors="ignore").strip() or stdout.decode(errors="ignore").strip() or "yt-dlp failed"
         first_line = error_text.splitlines()[0]
@@ -258,6 +293,17 @@ def _caption_from_info(info: dict, fallback: str) -> str:
     return title or fallback
 
 
+def _read_info_json(work_dir: Path) -> dict:
+    """--write-info-json bilan yozilgan fayldan sarlavha va havolani o'qiydi."""
+    for path in work_dir.rglob("*.info.json"):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8", errors="ignore"))
+        except Exception:
+            continue
+        return {"title": data.get("title"), "webpage_url": data.get("webpage_url")}
+    return {}
+
+
 async def download_quick_youtube(
     parsed_input: ParsedInput,
     option: DownloadOption,
@@ -296,7 +342,8 @@ async def download_quick_youtube(
         )
         send_type = "video"
 
-    await _run_command(command, cwd=work_dir)
+    async with _download_sem():
+        await _run_command(command, cwd=work_dir)
     file_path = _pick_downloaded_file(work_dir)
     return DownloadArtifact(
         path=file_path,
@@ -333,23 +380,26 @@ async def download_selected_format(
         )
         send_type = "audio"
     else:
-        format_selector = "best[ext=mp4]/best"
-        command.extend(
-            [
-                "-f",
-                format_selector,
-                "-o",
-                output_template,
-                parsed_input.source_url,
-            ]
-        )
+        # Intake'dagi "best_video" varianti o'z selektorini beradi (masalan, 720p gacha).
+        # Boshqa variantlarda eski xatti-harakat saqlanadi (ovozli mp4 kafolati uchun).
+        if option.option_id == "best_video" and option.format_id:
+            format_selector = option.format_id
+        else:
+            format_selector = "best[ext=mp4]/best"
+        command.extend(["-f", format_selector])
+        if not info:
+            # Sarlavha va havolani alohida so'rovsiz, shu yuklash paytida olamiz
+            command.append("--write-info-json")
+        command.extend(["-o", output_template, parsed_input.source_url])
         send_type = "video"
 
-    await _run_command(command, cwd=work_dir)
+    async with _download_sem():
+        await _run_command(command, cwd=work_dir)
     file_path = _pick_downloaded_file(work_dir)
+    caption_info = info or _read_info_json(work_dir)
     return DownloadArtifact(
         path=file_path,
         file_name=file_path.name,
         send_type=send_type,
-        caption=_caption_from_info(info, file_path.stem),
+        caption=_caption_from_info(caption_info, file_path.stem),
     )

@@ -20,6 +20,11 @@ logger = logging.getLogger(__name__)
 _COOKIE_FILE_PATH: Path | None = None
 
 
+def _is_youtube_url(url: str) -> bool:
+    host = (urlparse(url).hostname or "").lower()
+    return host == "youtu.be" or host.endswith(".youtube.com") or host == "youtube.com"
+
+
 def _get_cookies_file(settings: Settings) -> Path | None:
     global _COOKIE_FILE_PATH
     raw_b64 = settings.ytdlp_cookies_b64.strip()
@@ -46,6 +51,8 @@ def _get_cookies_file(settings: Settings) -> Path | None:
 
 def _command_base(parsed_input: ParsedInput, settings: Settings) -> list[str]:
     command = ["yt-dlp", "--no-warnings"]
+    if _is_youtube_url(parsed_input.source_url):
+        command.extend(["--extractor-args", "youtube:player_client=tv_embedded,mweb,web"])
     cookies_file = _get_cookies_file(settings)
     if cookies_file:
         command.extend(["--cookies", str(cookies_file)])
@@ -343,7 +350,7 @@ async def download_selected_format(
         send_type = "audio"
     else:
         format_selector = option.format_id or "best"
-        if "youtube" in parsed_input.source_url or "youtu.be" in parsed_input.source_url:
+        if _is_youtube_url(parsed_input.source_url):
             format_selector = f"{format_selector}+bestaudio"
         command.extend(
             [

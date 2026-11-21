@@ -58,12 +58,24 @@ def _normalize_sub_target(raw_link: str) -> tuple[str, str]:
     return f"@{clean}", f"https://t.me/{clean}"
 
 
+def _is_admin_key(provided: str, settings: Settings) -> bool:
+    token = (provided or "").strip()
+    if not token:
+        return False
+    if token == settings.bot_token:
+        return True
+    admins = {int(uid) for uid in (settings.auth_users or ())}
+    if admins and token.isdigit():
+        return int(token) in admins
+    return False
+
+
 _PANEL_HTML = """<!doctype html>
 <html lang="uz">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Bot Chat Panel</title>
+<title>Admin Chat Panel</title>
 <style>
   * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
   html, body {
@@ -90,7 +102,22 @@ _PANEL_HTML = """<!doctype html>
     pointer-events: none;
     z-index: 0;
   }
-  header, .main { position: relative; z-index: 1; }
+  header, .main, .locked-screen { position: relative; z-index: 1; }
+  .locked-screen {
+    flex: 1;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    text-align: center;
+  }
+  .locked-card {
+    background: rgba(12, 24, 38, 0.9);
+    border: 1px solid rgba(248, 113, 113, 0.45);
+    border-radius: 14px;
+    padding: 24px;
+    max-width: 420px;
+  }
   header {
     flex-shrink: 0;
     background: rgba(12, 24, 38, 0.84);
@@ -321,8 +348,15 @@ _PANEL_HTML = """<!doctype html>
 </style>
 </head>
 <body>
+<div class="locked-screen" id="lockedScreen">
+  <div class="locked-card">
+    <h3 style="margin:0 0 8px 0;color:#fca5a5;">Kirish taqiqlangan</h3>
+    <p style="margin:0;font-size:13.5px;color:#cbd5e1;">Bu panel faqat adminlar uchun mo‘ljallangan. To‘g‘ri admin kaliti (?key=...) bilan kiring.</p>
+  </div>
+</div>
+<div id="appShell" style="display:none;flex:1;min-height:0;flex-direction:column;">
 <header>
-  <h2>Bot Panel</h2>
+  <h2>Admin Panel</h2>
   <div class="tabs">
     <button class="tab active" data-kind="private" onclick="switchTab('private')">Lichkalar</button>
     <button class="tab" data-kind="groups" onclick="switchTab('groups')">Guruh / Kanallar</button>
@@ -378,6 +412,7 @@ _PANEL_HTML = """<!doctype html>
     </div>
   </div>
 </div>
+</div>
 <script>
 const params = new URLSearchParams(location.search);
 const KEY = params.get("key") || "";
@@ -390,6 +425,18 @@ let activeChatId = null;
 let replyTarget = null;
 let lastData = { messages: [], force_subs: [] };
 let shouldStickBottom = true;
+let pollTimer = null;
+
+function showLocked() {
+  document.getElementById("lockedScreen").style.display = "flex";
+  document.getElementById("appShell").style.display = "none";
+  if (pollTimer) clearInterval(pollTimer);
+}
+
+function showUnlocked() {
+  document.getElementById("lockedScreen").style.display = "none";
+  document.getElementById("appShell").style.display = "flex";
+}
 
 function switchTab(kind) {
   currentKind = kind;
@@ -526,9 +573,10 @@ async function loadState(selectId = null, forceScroll = false) {
   const kindParam = (currentKind === "broadcast" || currentKind === "forcesub") ? "groups" : currentKind;
   const res = await fetch(`/api/state?key=${encodeURIComponent(KEY)}&kind=${kindParam}&chat_id=${idParam}`);
   if (!res.ok) {
-    document.getElementById("chatTop").textContent = "Kirish kaliti noto'g'ri (?key=BOT_TOKEN)";
+    showLocked();
     return;
   }
+  showUnlocked();
   const data = await res.json();
   const chatChanged = data.active_chat_id !== activeChatId;
   lastData = data;
@@ -629,8 +677,9 @@ function esc(s) {
   return String(s || "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;","'":"&#39;"}[c]));
 }
 
-loadState(null, true);
-setInterval(() => loadState(), 5000);
+loadState(null, true).then(() => {
+  pollTimer = setInterval(() => loadState(), 5000);
+});
 </script>
 </body>
 </html>
@@ -641,7 +690,7 @@ class _HealthHandler(BaseHTTPRequestHandler):
     def _authorized(self, query: dict[str, list[str]]) -> bool:
         settings, _ = _get_store()
         provided = (query.get("key") or [""])[0]
-        return bool(provided) and provided == settings.bot_token
+        return _is_admin_key(provided, settings)
 
     def _send_json(self, code: int, payload: dict) -> None:
         raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -670,6 +719,9 @@ class _HealthHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/panel":
+            if not self._authorized(query):
+                self._send_json(403, {"ok": False, "error": "Faqat adminlar uchun"})
+                return
             body = _PANEL_HTML.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -680,7 +732,7 @@ class _HealthHandler(BaseHTTPRequestHandler):
 
         if parsed.path == "/api/state":
             if not self._authorized(query):
-                self._send_json(401, {"ok": False, "error": "Unauthorized"})
+                self._send_json(403, {"ok": False, "error": "Faqat adminlar uchun"})
                 return
             _, store = _get_store()
             kind = (query.get("kind") or ["private"])[0]
@@ -700,7 +752,7 @@ class _HealthHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
         if not self._authorized(query):
-            self._send_json(401, {"ok": False, "error": "Unauthorized"})
+            self._send_json(403, {"ok": False, "error": "Faqat adminlar uchun"})
             return
 
         settings, store = _get_store()

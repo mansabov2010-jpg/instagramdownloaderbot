@@ -5,6 +5,7 @@ import logging
 import re
 
 from aiogram import Bot, F, Router
+from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.types import Message
 
 from config import Settings
@@ -38,11 +39,11 @@ async def intake_message(
 ) -> None:
     raw = (message.text or "").strip()
     if not raw or raw.startswith("/"):
-        return
+        raise SkipHandler
 
     url = _extract_url(raw)
     if not url:
-        return
+        raise SkipHandler
 
     status_msg = await message.reply("⏳ Video yuklanmoqda...")
     started_at = datetime.now()

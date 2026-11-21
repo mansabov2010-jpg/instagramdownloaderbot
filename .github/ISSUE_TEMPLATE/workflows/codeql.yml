@@ -1,0 +1,78 @@
+# Ko'pgina loyihalar uchun ushbu workflow faylini o'zgartirish shart emas; uni shunchaki
+# repozitoriyangizga commit qilishingiz kifoya.
+#
+# Tahlil qilinadigan tillar ro'yxatini qayta belgilash yoki maxsus so'rovlar
+# hamda build mantiqini taqdim etish uchun ushbu faylni o'zgartirishingiz mumkin.
+#
+# ******** ESLATMA ********
+# Biz repozitoriyangizdagi tillarni aniqlashga urindik. Qo'llab-quvvatlanadigan
+# CodeQL tillarining to'g'ri ro'yxatini tasdiqlash uchun quyida belgilangan
+# `language` matritsasini tekshiring.
+#
+name: "CodeQL"
+
+on: [push]
+
+jobs:
+  analyze:
+    name: Analyze
+    # Runner hajmi CodeQL tahlil vaqtiga ta'sir qiladi. Batafsil ma'lumot uchun qarang:
+    #   - https://gh.io/recommended-hardware-resources-for-running-codeql
+    #   - https://gh.io/supported-runners-and-hardware-resources
+    #   - https://gh.io/using-larger-runners
+    # Tahlil vaqtini yaxshilash uchun kattaroq runner'lardan foydalanishni ko'rib chiqing.
+    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
+    timeout-minutes: ${{ (matrix.language == 'swift' && 120) || 360 }}
+    permissions:
+      # barcha workflow'lar uchun majburiy
+      security-events: write
+
+      # faqat xususiy repozitoriylardagi workflow'lar uchun talab qilinadi
+      actions: read
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'python' ]
+        # CodeQL quyidagilarni qo'llab-quvvatlaydi: [ 'c-cpp', 'csharp', 'go', 'java-kotlin', 'javascript-typescript', 'python', 'ruby', 'swift' ]
+        # Java, Kotlin yoki ikkalasida ham yozilgan kodni tahlil qilish uchun faqat 'java-kotlin' ishlating
+        # JavaScript, TypeScript yoki ikkalasida ham yozilgan kodni tahlil qilish uchun faqat 'javascript-typescript' ishlating
+        # CodeQL til qo'llab-quvvatlovi haqida batafsil: https://aka.ms/codeql-docs/language-support
+
+    steps:
+- name: Checkout repository
+      uses: actions/checkout@v4
+
+    # Skanerlash uchun CodeQL vositalarini ishga tushiradi.
+- name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: ${{ matrix.language }}
+        # Agar maxsus so'rovlarni ko'rsatmoqchi bo'lsangiz, buni shu yerda yoki config faylida qilishingiz mumkin.
+        # Standart holda bu yerda ko'rsatilgan so'rovlar config faylida ko'rsatilganlarini bekor qiladi.
+        # Config faylidagilar bilan birga ishlatish uchun ro'yxat boshiga "+" qo'ying.
+
+        # CodeQL so'rov paketlari haqida batafsil: https://docs.github.com/en/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/configuring-code-scanning#using-queries-in-ql-packs
+        # queries: security-extended,security-and-quality
+
+
+    # Autobuild kompilyatsiya qilinadigan tillarni (C/C++, C#, Go, Java yoki Swift) build qilishga urinadi.
+    # Agar bu bosqich muvaffaqiyatsiz tugasa, uni olib tashlab, build'ni qo'lda bajaring (quyida qarang)
+- name: Autobuild
+      uses: github/codeql-action/autobuild@v3
+
+    # ℹ️ OS shell orqali ishga tushiriladigan buyruq satri dasturlari.
+    # 📚 Qarang: https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsrun
+
+    #   Agar yuqoridagi Autobuild muvaffaqiyatsiz bo'lsa, uni olib tashlang va quyidagi uch qator izohini olib tashlang.
+    #   Kodingizni build qilish uchun ularni o'zgartiring (yoki ko'proq qo'shing), ko'rsatma uchun quyidagi EXAMPLE'ga qarang.
+
+    # - run: |
+    #     echo "Run, Build Application using script"
+    #     ./location_of_script_within_repo/buildscript.sh
+
+- name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:${{matrix.language}}"

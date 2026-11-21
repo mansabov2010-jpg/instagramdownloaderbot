@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
+import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -15,10 +17,38 @@ from utils.models import DownloadArtifact, DownloadOption, ParsedInput
 VIDEO_EXTENSIONS = {"mp4", "mkv", "webm", "mov"}
 AUDIO_EXTENSIONS = {"mp3", "m4a", "aac", "wav", "flac", "opus", "weba"}
 logger = logging.getLogger(__name__)
+_COOKIE_FILE_PATH: Path | None = None
+
+
+def _get_cookies_file(settings: Settings) -> Path | None:
+    global _COOKIE_FILE_PATH
+    raw_b64 = settings.ytdlp_cookies_b64.strip()
+    if not raw_b64:
+        return None
+
+    if _COOKIE_FILE_PATH and _COOKIE_FILE_PATH.exists():
+        return _COOKIE_FILE_PATH
+
+    cleaned_b64 = "".join(raw_b64.split())
+    decoded_bytes = base64.b64decode(cleaned_b64, validate=False)
+    decoded_text = decoded_bytes.decode("utf-8", errors="ignore").lstrip()
+    if decoded_text.startswith("[") or decoded_text.startswith("{"):
+        logger.warning("YTDLP_COOKIES_B64 is JSON instead of Netscape format; skipping cookies")
+        return None
+
+    tmp = tempfile.NamedTemporaryFile(mode="wb", suffix=".txt", delete=False)
+    tmp.write(decoded_bytes)
+    tmp.flush()
+    tmp.close()
+    _COOKIE_FILE_PATH = Path(tmp.name)
+    return _COOKIE_FILE_PATH
 
 
 def _command_base(parsed_input: ParsedInput, settings: Settings) -> list[str]:
     command = ["yt-dlp", "--no-warnings"]
+    cookies_file = _get_cookies_file(settings)
+    if cookies_file:
+        command.extend(["--cookies", str(cookies_file)])
     if settings.http_proxy:
         command.extend(["--proxy", settings.http_proxy])
     if parsed_input.username:

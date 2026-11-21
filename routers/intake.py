@@ -1,27 +1,28 @@
 from __future__ import annotations
 
+from datetime import datetime
 import logging
 import re
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.types import Message
 
 from config import Settings
 from services.cooldown import CooldownManager
 from services.parsing import extract_link_text, is_probable_youtube_url, parse_user_input
 from services.request_store import RequestStore
-from services.telegram_uploads import deliver_artifact
+from services.telegram_uploads import upload_artifact
 from services.ytdlp import (
     build_direct_options,
     build_quick_youtube_options,
     build_ytdlp_options,
+    download_selected_format,
     probe_url,
-    run_ytdlp_download,
 )
 from utils import text
 from utils.keyboards import format_keyboard
 from utils.logging_config import safe_url_label
-from utils.models import StoredRequest
+from utils.models import DownloadOption, StoredRequest
 
 router = Router(name="intake")
 logger = logging.getLogger(__name__)
@@ -33,18 +34,24 @@ def _is_instagram_url(url: str) -> bool:
     return bool(_INSTAGRAM_RE.search(url or ""))
 
 
-def _pick_group_video_option(options: list) -> object | None:
+def _pick_group_video_option(options: list[DownloadOption]) -> DownloadOption:
     for opt in options:
-        label = str(getattr(opt, "label", "") or getattr(opt, "title", "") or getattr(opt, "name", "")).lower()
-        fmt = str(getattr(opt, "ext", "") or getattr(opt, "format_id", "") or "").lower()
-        if "mp3" not in label and "audio" not in label and fmt != "mp3":
+        if opt.send_type == "video":
             return opt
-    return options[0] if options else None
+    return DownloadOption(
+        option_id="group_ig_video",
+        label="Video",
+        send_type="video",
+        mode="ytdlp_format",
+        format_id="best",
+        file_ext="mp4",
+    )
 
 
 @router.message(F.chat.type.in_({"private", "group", "supergroup"}), F.text)
 async def intake_message(
     message: Message,
+    bot: Bot,
     settings: Settings,
     cooldown: CooldownManager,
     request_store: RequestStore,
@@ -76,45 +83,34 @@ async def intake_message(
         await message.answer(text.RATE_LIMIT.format(minutes=minutes))
         return
 
+    started_at = datetime.now()
     status_message = await message.reply(text.PROCESSING)
 
     if is_group and _is_instagram_url(parsed.source_url):
         try:
             info = await probe_url(parsed, settings)
         except RuntimeError:
-            info = None
+            info = {}
 
         options = build_ytdlp_options(info) if info else []
-        if not options:
-            options = build_direct_options(parsed, info=info)
-
         chosen = _pick_group_video_option(options)
-        if not chosen:
-            await status_message.edit_text("Videoni yuklab bo'lmadi.")
-            return
-
-        token = request_store.create_token()
-        stored = StoredRequest(
-            token=token,
-            request_type="ytdlp_selection" if info else "direct_download",
-            parsed_input=parsed,
-            options=options,
-            info=info or {},
-        )
-        request_store.save(stored)
+        work_dir = settings.work_dir / f"grp_{message.chat.id}_{message.message_id}"
 
         try:
-            artifact = await run_ytdlp_download(
-                stored=stored,
+            artifact = await download_selected_format(
+                parsed_input=parsed,
                 option=chosen,
+                info=info or {},
                 settings=settings,
-                status_message=status_message,
+                work_dir=work_dir,
             )
-            await deliver_artifact(
-                message=message,
+            await upload_artifact(
+                bot=bot,
                 status_message=status_message,
+                source_message=message,
                 artifact=artifact,
-                settings=settings,
+                thumbnail_path=None,
+                started_at=started_at,
             )
         except Exception as exc:
             logger.warning("Group Instagram download failed | chat=%s err=%s", message.chat.id, exc)

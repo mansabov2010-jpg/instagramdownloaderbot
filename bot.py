@@ -62,15 +62,17 @@ _PANEL_HTML = """<!doctype html>
 <html lang="uz">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Bot Chat Panel</title>
 <style>
   * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
-  body {
+  html, body {
     margin: 0;
+    padding: 0;
     background: #081524;
     color: #f8fafc;
-    height: 100vh;
+    height: 100dvh;
+    width: 100%;
     display: flex;
     flex-direction: column;
     position: relative;
@@ -90,25 +92,26 @@ _PANEL_HTML = """<!doctype html>
   }
   header, .main { position: relative; z-index: 1; }
   header {
-    background: rgba(12, 24, 38, 0.78);
+    flex-shrink: 0;
+    background: rgba(12, 24, 38, 0.84);
     backdrop-filter: blur(8px);
-    padding: 10px 14px;
+    padding: 8px 12px;
     display: flex;
     align-items: center;
     gap: 8px;
     border-bottom: 1px solid rgba(56, 189, 248, 0.28);
     flex-wrap: wrap;
   }
-  header h2 { margin: 0; font-size: 16px; color: #e0f2fe; margin-right: 4px; }
+  header h2 { margin: 0; font-size: 15px; color: #e0f2fe; margin-right: 4px; }
   .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
   .tab {
-    background: rgba(24, 42, 62, 0.82);
+    background: rgba(24, 42, 62, 0.85);
     color: #e2e8f0;
     border: 1px solid rgba(148, 163, 184, 0.25);
-    padding: 7px 11px;
+    padding: 6px 10px;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 12.5px;
+    font-size: 12px;
   }
   .tab.active { background: #0284c7; color: #fff; font-weight: 600; border-color: #7dd3fc; }
   .search-box {
@@ -116,45 +119,74 @@ _PANEL_HTML = """<!doctype html>
     padding: 6px 10px;
     border-radius: 8px;
     border: 1px solid rgba(148, 163, 184, 0.35);
-    background: rgba(9, 18, 30, 0.78);
+    background: rgba(9, 18, 30, 0.82);
     color: #fff;
     font-size: 13px;
-    min-width: 170px;
+    min-width: 160px;
   }
-  .main { display: flex; flex: 1; min-height: 0; }
+  .main {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    overflow: hidden;
+  }
   .sidebar {
     width: 300px;
-    background: rgba(12, 24, 38, 0.72);
+    flex-shrink: 0;
+    background: rgba(12, 24, 38, 0.76);
     backdrop-filter: blur(6px);
     border-right: 1px solid rgba(56, 189, 248, 0.22);
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
-  .item { padding: 11px 14px; border-bottom: 1px solid rgba(255, 255, 255, 0.09); cursor: pointer; }
+  .item { padding: 10px 14px; border-bottom: 1px solid rgba(255, 255, 255, 0.09); cursor: pointer; }
   .item:hover { background: rgba(30, 58, 86, 0.72); }
   .item.active { background: rgba(2, 132, 199, 0.55); border-left: 3px solid #7dd3fc; }
   .item-title { font-weight: 600; font-size: 14px; }
-  .item-sub { font-size: 12px; color: #cbd5e1; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .chat-area { flex: 1; display: flex; flex-direction: column; background: rgba(8, 17, 28, 0.28); min-width: 0; }
+  .item-sub { font-size: 12px; color: #cbd5e1; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chat-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: rgba(8, 17, 28, 0.28);
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+  }
   .chat-top {
-    padding: 10px 16px;
-    background: rgba(12, 24, 38, 0.78);
+    flex-shrink: 0;
+    padding: 8px 14px;
+    background: rgba(12, 24, 38, 0.84);
     backdrop-filter: blur(8px);
     border-bottom: 1px solid rgba(56, 189, 248, 0.22);
-    font-size: 14px;
+    font-size: 13.5px;
     font-weight: 600;
   }
-  .messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .messages {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
   .msg {
-    max-width: 75%;
+    max-width: 82%;
     padding: 9px 12px;
     border-radius: 12px;
     font-size: 14px;
     line-height: 1.4;
     word-break: break-word;
     backdrop-filter: blur(6px);
+    flex-shrink: 0;
   }
-  .msg.in { background: rgba(18, 33, 51, 0.84); align-self: flex-start; border: 1px solid rgba(148, 163, 184, 0.22); }
-  .msg.out { background: rgba(2, 132, 199, 0.86); align-self: flex-end; border: 1px solid rgba(125, 211, 252, 0.45); }
+  .msg.in { background: rgba(18, 33, 51, 0.86); align-self: flex-start; border: 1px solid rgba(148, 163, 184, 0.22); }
+  .msg.out { background: rgba(2, 132, 199, 0.88); align-self: flex-end; border: 1px solid rgba(125, 211, 252, 0.45); }
   .msg-meta { font-size: 11px; color: #e0f2fe; margin-bottom: 4px; display: flex; justify-content: space-between; gap: 10px; }
   .reply-quote {
     background: rgba(0, 0, 0, 0.3);
@@ -165,9 +197,9 @@ _PANEL_HTML = """<!doctype html>
     font-size: 12px;
   }
   .reply-who { font-weight: 600; color: #bae6fd; font-size: 11px; }
-  .msg-actions { display: flex; gap: 6px; margin-top: 6px; justify-content: flex-end; }
+  .msg-actions { display: flex; gap: 6px; margin-top: 6px; justify-content: flex-end; flex-wrap: wrap; }
   .mini-btn {
-    background: rgba(15, 23, 42, 0.72);
+    background: rgba(15, 23, 42, 0.75);
     color: #f8fafc;
     border: 1px solid rgba(148, 163, 184, 0.3);
     border-radius: 6px;
@@ -175,36 +207,42 @@ _PANEL_HTML = """<!doctype html>
     font-size: 11px;
     cursor: pointer;
   }
-  .mini-btn.del { background: rgba(185, 28, 28, 0.75); }
+  .mini-btn.del { background: rgba(185, 28, 28, 0.78); }
   .reply-bar {
     display: none;
-    padding: 7px 14px;
-    background: rgba(12, 24, 38, 0.9);
+    flex-shrink: 0;
+    padding: 6px 12px;
+    background: rgba(12, 24, 38, 0.92);
     border-top: 1px solid rgba(56, 189, 248, 0.3);
     font-size: 12px;
     color: #bae6fd;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
   }
   .composer {
     display: flex;
+    flex-shrink: 0;
     gap: 8px;
-    padding: 10px 14px;
-    background: rgba(12, 24, 38, 0.84);
+    padding: 8px 12px;
+    background: rgba(12, 24, 38, 0.9);
     backdrop-filter: blur(8px);
-    border-top: 1px solid rgba(56, 189, 248, 0.25);
+    border-top: 1px solid rgba(56, 189, 248, 0.28);
+    width: 100%;
   }
   .composer input {
     flex: 1;
+    min-width: 0;
     padding: 10px 12px;
     border-radius: 8px;
     border: 1px solid rgba(148, 163, 184, 0.35);
-    background: rgba(9, 18, 30, 0.84);
+    background: rgba(9, 18, 30, 0.9);
     color: #fff;
     font-size: 14px;
   }
   .composer button, .primary-btn {
-    padding: 10px 15px;
+    flex-shrink: 0;
+    padding: 10px 14px;
     border-radius: 8px;
     border: none;
     background: #0284c7;
@@ -214,14 +252,16 @@ _PANEL_HTML = """<!doctype html>
   }
   .tool-panel {
     display: none;
-    padding: 16px;
+    padding: 14px;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     flex: 1;
+    min-height: 0;
     gap: 14px;
     flex-direction: column;
   }
   .card {
-    background: rgba(12, 24, 38, 0.82);
+    background: rgba(12, 24, 38, 0.84);
     backdrop-filter: blur(8px);
     border: 1px solid rgba(56, 189, 248, 0.25);
     border-radius: 12px;
@@ -234,7 +274,7 @@ _PANEL_HTML = """<!doctype html>
     padding: 10px 12px;
     border-radius: 8px;
     border: 1px solid rgba(148, 163, 184, 0.35);
-    background: rgba(9, 18, 30, 0.85);
+    background: rgba(9, 18, 30, 0.88);
     color: #fff;
     font-size: 13.5px;
     margin-bottom: 10px;
@@ -246,15 +286,37 @@ _PANEL_HTML = """<!doctype html>
     align-items: center;
     padding: 8px 10px;
     border-radius: 8px;
-    background: rgba(15, 28, 44, 0.78);
+    background: rgba(15, 28, 44, 0.82);
     border: 1px solid rgba(148, 163, 184, 0.2);
     margin-bottom: 8px;
     gap: 8px;
   }
   @media (max-width: 768px) {
-    .main { flex-direction: column; }
-    .sidebar { width: 100%; max-height: 28vh; border-right: none; border-bottom: 1px solid rgba(56, 189, 248, 0.25); }
-    .search-box { margin-left: 0; width: 100%; }
+    header { padding: 7px 10px; gap: 6px; }
+    .main { flex-direction: column; flex: 1; min-height: 0; height: 100%; }
+    .sidebar {
+      width: 100%;
+      height: 115px;
+      max-height: 115px;
+      flex-shrink: 0;
+      border-right: none;
+      border-bottom: 1px solid rgba(56, 189, 248, 0.25);
+    }
+    .chat-area {
+      flex: 1;
+      min-height: 0;
+      height: auto;
+    }
+    .messages {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 10px;
+    }
+    .composer {
+      padding: 8px 10px;
+    }
+    .search-box { margin-left: 0; width: 100%; min-width: 0; }
   }
 </style>
 </head>
@@ -327,6 +389,7 @@ let currentKind = "private";
 let activeChatId = null;
 let replyTarget = null;
 let lastData = { messages: [], force_subs: [] };
+let shouldStickBottom = true;
 
 function switchTab(kind) {
   currentKind = kind;
@@ -337,6 +400,7 @@ function switchTab(kind) {
   document.getElementById("forcesubPanel").style.display = kind === "forcesub" ? "flex" : "none";
   if (!isTool) {
     activeChatId = null;
+    shouldStickBottom = true;
     clearReply();
   }
   loadState();
@@ -369,7 +433,7 @@ async function editOutMsg(m) {
     body: JSON.stringify({ row_id: m.id, chat_id: activeChatId, message_id: m.tg_message_id, text: updated.trim() })
   });
   const out = await res.json();
-  if (out.ok) loadState(activeChatId);
+  if (out.ok) loadState(activeChatId, true);
   else alert("Tahrirlash xatosi: " + out.error);
 }
 
@@ -381,7 +445,7 @@ async function deleteOutMsg(m) {
     body: JSON.stringify({ row_id: m.id, chat_id: activeChatId, message_id: m.tg_message_id || null })
   });
   const out = await res.json();
-  if (out.ok) loadState(activeChatId);
+  if (out.ok) loadState(activeChatId, true);
   else alert("O'chirish xatosi: " + out.error);
 }
 
@@ -451,7 +515,13 @@ function renderForceSubs(subs) {
   `).join("");
 }
 
-async function loadState(selectId = null) {
+async function loadState(selectId = null, forceScroll = false) {
+  const box = document.getElementById("messages");
+  if (box && !forceScroll) {
+    shouldStickBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 80;
+  } else if (forceScroll) {
+    shouldStickBottom = true;
+  }
   const idParam = selectId !== null ? selectId : (activeChatId !== null ? activeChatId : "");
   const kindParam = (currentKind === "broadcast" || currentKind === "forcesub") ? "groups" : currentKind;
   const res = await fetch(`/api/state?key=${encodeURIComponent(KEY)}&kind=${kindParam}&chat_id=${idParam}`);
@@ -460,8 +530,10 @@ async function loadState(selectId = null) {
     return;
   }
   const data = await res.json();
+  const chatChanged = data.active_chat_id !== activeChatId;
   lastData = data;
   activeChatId = data.active_chat_id;
+  if (chatChanged) shouldStickBottom = true;
   renderSidebar(data);
   renderMessages(data);
   renderForceSubs(data.force_subs || []);
@@ -476,7 +548,7 @@ function renderSidebar(data) {
       const div = document.createElement("div");
       div.className = "item" + (targetId === activeChatId ? " active" : "");
       div.innerHTML = `<div class="item-title">${esc(c.full_name)}</div><div class="item-sub">${c.username ? "@" + esc(c.username) + " · " : ""}ID: ${c.user_id}</div>`;
-      div.onclick = () => { activeChatId = targetId; loadState(targetId); };
+      div.onclick = () => { activeChatId = targetId; loadState(targetId, true); };
       sb.appendChild(div);
     });
     return;
@@ -490,7 +562,7 @@ function renderSidebar(data) {
     const div = document.createElement("div");
     div.className = "item" + (ch.chat_id === activeChatId ? " active" : "");
     div.innerHTML = `<div class="item-title">${esc(ch.title)}</div><div class="item-sub">${esc(ch.last_message || "")}</div>`;
-    div.onclick = () => { activeChatId = ch.chat_id; clearReply(); loadState(ch.chat_id); };
+    div.onclick = () => { activeChatId = ch.chat_id; clearReply(); loadState(ch.chat_id, true); };
     sb.appendChild(div);
   });
 }
@@ -521,7 +593,9 @@ function renderMessages(data) {
     div.innerHTML = `<div class="msg-meta"><span>${esc(m.sender_name)}</span><span>${esc(m.created_at)}</span></div>${quoteHtml}<div>${esc(m.text)}</div>${actionsHtml}`;
     box.appendChild(div);
   });
-  box.scrollTop = box.scrollHeight;
+  if (shouldStickBottom) {
+    box.scrollTop = box.scrollHeight;
+  }
 }
 
 async function sendMsg(e) {
@@ -545,7 +619,7 @@ async function sendMsg(e) {
   if (out.ok) {
     inp.value = "";
     clearReply();
-    loadState(activeChatId);
+    loadState(activeChatId, true);
   } else {
     alert("Xato: " + out.error);
   }
@@ -555,8 +629,8 @@ function esc(s) {
   return String(s || "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;","'":"&#39;"}[c]));
 }
 
-loadState();
-setInterval(() => loadState(), 4000);
+loadState(null, true);
+setInterval(() => loadState(), 5000);
 </script>
 </body>
 </html>

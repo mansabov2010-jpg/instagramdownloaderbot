@@ -1,14 +1,30 @@
 from __future__ import annotations
 
 import html
-from aiogram import Router
+
+from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 
 from config import Settings
 from utils import text
 
 router = Router(name="commands")
+
+
+@router.callback_query(F.data.startswith("ui:"))
+async def handle_ui_callback(callback: CallbackQuery) -> None:
+    action = (callback.data or "").split(":", 1)[-1]
+    if action == "help":
+        if callback.message:
+            await callback.message.answer(text.HELP_MESSAGE)
+    elif action == "close":
+        if callback.message:
+            try:
+                await callback.message.delete()
+            except Exception:
+                pass
+    await callback.answer()
 
 
 @router.message(CommandStart())

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 import logging
 import re
+import time
 
 from aiogram import Bot, F, Router
 from aiogram.dispatcher.event.bases import SkipHandler
@@ -10,7 +12,7 @@ from aiogram.types import Message
 
 from config import Settings
 from services.telegram_uploads import upload_artifact
-from services.ytdlp import download_selected_format, probe_url
+from services.ytdlp import download_selected_format
 from utils.models import DownloadOption, ParsedInput
 
 router = Router(name="intake")
@@ -50,27 +52,37 @@ async def intake_message(
     parsed = ParsedInput(source_url=url)
 
     try:
-        try:
-            info = await probe_url(parsed, settings)
-        except Exception:
-            info = {}
+        # Alohida probe_url yo'q: u yt-dlp ni ikki marta ishga tushirib, vaqtni ikki baravar oshirardi.
+        info: dict = {}
 
         chosen = DownloadOption(
             option_id="best_video",
             label="Video",
             send_type="video",
             mode="ytdlp_format",
-            format_id="best[ext=mp4]/best",
+            # 720p gacha bitta mp4 fayl: hajmi kichik, yuklash va Telegramga yuborish tez
+            format_id="best[ext=mp4][height<=720]/best[ext=mp4]/best",
             file_ext="mp4",
         )
         work_dir = settings.work_dir / f"dl_{message.chat.id}_{message.message_id}"
-        artifact = await download_selected_format(
-            parsed_input=parsed,
-            option=chosen,
-            info=info or {},
-            settings=settings,
-            work_dir=work_dir,
-        )
+        t0 = time.monotonic()
+        try:
+            artifact = await asyncio.wait_for(
+                download_selected_format(
+                    parsed_input=parsed,
+                    option=chosen,
+                    info=info,
+                    settings=settings,
+                    work_dir=work_dir,
+                ),
+                timeout=240,
+            )
+        except asyncio.TimeoutError:
+            logger.error("Download timeout (240s) for %s", url)
+            await status_msg.edit_text("❌ Yuklash juda uzoq davom etdi (4 daqiqa). Keyinroq qayta urinib ko'ring.")
+            return
+        t1 = time.monotonic()
+        logger.info("TIMING download=%.1fs url=%s", t1 - t0, url)
         await upload_artifact(
             bot=bot,
             status_message=status_msg,
@@ -79,6 +91,7 @@ async def intake_message(
             thumbnail_path=None,
             started_at=started_at,
         )
+        logger.info("TIMING upload=%.1fs url=%s", time.monotonic() - t1, url)
     except Exception as exc:
         logger.exception("Intake error for %s", url)
         await status_msg.edit_text(f"❌ Xato: {exc}")

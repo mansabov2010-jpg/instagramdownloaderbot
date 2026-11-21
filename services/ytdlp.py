@@ -316,7 +316,8 @@ async def download_selected_format(
                 parsed_input.source_url,
             ]
         )
-        send_type = option.send_type
+       send_type = option.send_type
 
     logger.info(
         "Starting yt-dlp format download | source=%s mode=%s format=%s send_type=%s work_dir=%s",
+    )

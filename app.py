@@ -61,6 +61,8 @@ class InboxLoggingMiddleware(BaseMiddleware):
             elif not content and event.document:
                 content = f"[Fayl: {event.document.file_name or 'document'}]"
 
+            reply_id = event.reply_to_message.message_id if event.reply_to_message else None
+
             self.inbox_store.record_incoming(
                 chat_id=chat.id,
                 chat_type=chat_type,
@@ -70,6 +72,9 @@ class InboxLoggingMiddleware(BaseMiddleware):
                 full_name=full_name,
                 user_username=user.username if user else "",
                 text=content,
+                tg_message_id=event.message_id,
+                reply_to_tg_id=reply_id,
+                save_contact=(chat_type == "private"),
             )
 
         return await handler(event, data)
@@ -94,6 +99,7 @@ def _build_chat_member_router(inbox_store: InboxStore) -> Router:
             full_name=f"{actor.first_name or ''} {actor.last_name or ''}".strip() if actor else "Admin",
             user_username=actor.username if actor else "",
             text=status_text,
+            save_contact=False,
         )
 
     return member_router

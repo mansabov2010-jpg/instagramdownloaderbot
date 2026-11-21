@@ -122,10 +122,10 @@ def create_dispatcher(settings: Settings, inbox_store: InboxStore | None = None)
     dispatcher = Dispatcher()
     dispatcher.message.middleware(InboxLoggingMiddleware(store))
     dispatcher.include_router(_build_chat_member_router(store))
-    dispatcher.include_router(admin_router)
     dispatcher.include_router(commands_router)
     dispatcher.include_router(thumbnails_router)
     dispatcher.include_router(intake_router)
+    dispatcher.include_router(admin_router)
     dispatcher.include_router(callbacks_router)
     dispatcher.workflow_data.update(
         settings=settings,

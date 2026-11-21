@@ -27,7 +27,7 @@ def _is_youtube_url(url: str) -> bool:
 
 def _get_cookies_file(settings: Settings) -> Path | None:
     global _COOKIE_FILE_PATH
-    raw_b64 = settings.ytdlp_cookies_b64.strip()
+    raw_b64 = (settings.ytdlp_cookies_b64 or "").strip()
     if not raw_b64:
         return None
 
@@ -50,7 +50,7 @@ def _get_cookies_file(settings: Settings) -> Path | None:
 
 
 def _command_base(parsed_input: ParsedInput, settings: Settings) -> list[str]:
-    command = ["yt-dlp", "--no-warnings"]
+    command = ["yt-dlp", "--no-warnings", "--no-playlist"]
     if _is_youtube_url(parsed_input.source_url):
         command.extend(["--extractor-args", "youtube:player_client=tv_embedded,mweb,web"])
     cookies_file = _get_cookies_file(settings)
@@ -66,7 +66,7 @@ def _command_base(parsed_input: ParsedInput, settings: Settings) -> list[str]:
 
 
 async def _run_command(command: list[str], cwd: Path | None = None) -> tuple[str, str]:
-    logger.debug("Running yt-dlp command | cwd=%s command=%s", cwd, redact_command(command))
+    logger.info("Running yt-dlp | cwd=%s cmd=%s", cwd, redact_command(command))
     process = await asyncio.create_subprocess_exec(
         *command,
         cwd=str(cwd) if cwd else None,
@@ -75,15 +75,11 @@ async def _run_command(command: list[str], cwd: Path | None = None) -> tuple[str
     )
     stdout, stderr = await process.communicate()
     if process.returncode != 0:
-        error_text = stderr.decode().strip() or stdout.decode().strip() or "yt-dlp failed"
-        logger.warning(
-            "yt-dlp command failed | cwd=%s command=%s error=%s",
-            cwd,
-            redact_command(command),
-            error_text.splitlines()[0],
-        )
-        raise RuntimeError(error_text)
-    return stdout.decode().strip(), stderr.decode().strip()
+        error_text = stderr.decode(errors="ignore").strip() or stdout.decode(errors="ignore").strip() or "yt-dlp failed"
+        first_line = error_text.splitlines()[0]
+        logger.warning("yt-dlp failed | err=%s", first_line)
+        raise RuntimeError(first_line)
+    return stdout.decode(errors="ignore").strip(), stderr.decode(errors="ignore").strip()
 
 
 def _is_audio_only(format_data: dict) -> bool:
@@ -127,12 +123,6 @@ async def probe_url(parsed_input: ParsedInput, settings: Settings) -> dict:
     if "\n" in stdout:
         stdout = stdout.splitlines()[0]
     payload = json.loads(stdout)
-    logger.info(
-        "Probe complete | source=%s title=%s extractor=%s",
-        safe_url_label(parsed_input.source_url),
-        payload.get("title", "-"),
-        payload.get("extractor_key", payload.get("extractor", "-")),
-    )
     return payload
 
 
@@ -207,7 +197,13 @@ def build_direct_options(
     if not ext:
         ext = _ext_from_url(source_url)
 
-    send_type = "video" if (ext and ext.lower() in VIDEO_EXTENSIONS) else "audio" if (ext and ext.lower() in AUDIO_EXTENSIONS) else "document"
+    send_type = (
+        "video"
+        if (ext and ext.lower() in VIDEO_EXTENSIONS)
+        else "audio"
+        if (ext and ext.lower() in AUDIO_EXTENSIONS)
+        else "document"
+    )
 
     options = [
         DownloadOption(
@@ -249,17 +245,7 @@ def _pick_downloaded_file(work_dir: Path) -> Path:
         and path.suffix.lower() not in ignored_suffixes
     ]
     if not files:
-        discovered = sorted(
-            str(path.relative_to(work_dir))
-            for path in work_dir.rglob("*")
-            if path.is_file()
-        )
-        logger.warning(
-            "No downloaded media file found | work_dir=%s files=%s",
-            work_dir,
-            discovered,
-        )
-        raise RuntimeError("No file was downloaded")
+        raise RuntimeError("Yuklangan media fayl topilmadi")
     files.sort(key=lambda item: item.stat().st_mtime, reverse=True)
     return files[0]
 
@@ -310,20 +296,8 @@ async def download_quick_youtube(
         )
         send_type = "video"
 
-    logger.info(
-        "Starting quick YouTube download | source=%s mode=%s work_dir=%s",
-        safe_url_label(parsed_input.source_url),
-        option.option_id,
-        work_dir,
-    )
     await _run_command(command, cwd=work_dir)
     file_path = _pick_downloaded_file(work_dir)
-    logger.info(
-        "Quick YouTube download complete | file=%s bytes=%s send_type=%s",
-        file_path.name,
-        file_path.stat().st_size,
-        send_type,
-    )
     return DownloadArtifact(
         path=file_path,
         file_name=file_path.name,
@@ -359,15 +333,11 @@ async def download_selected_format(
         )
         send_type = "audio"
     else:
-        format_selector = option.format_id or "best"
-        if _is_youtube_url(parsed_input.source_url):
-            format_selector = f"{format_selector}+bestaudio/best"
+        format_selector = "best[ext=mp4]/best"
         command.extend(
             [
                 "-f",
                 format_selector,
-                "--merge-output-format",
-                "mp4",
                 "-o",
                 output_template,
                 parsed_input.source_url,
@@ -375,22 +345,8 @@ async def download_selected_format(
         )
         send_type = "video"
 
-    logger.info(
-        "Starting yt-dlp format download | source=%s mode=%s format=%s send_type=%s work_dir=%s",
-        safe_url_label(parsed_input.source_url),
-        option.mode,
-        format_selector,
-        send_type,
-        work_dir,
-    )
     await _run_command(command, cwd=work_dir)
     file_path = _pick_downloaded_file(work_dir)
-    logger.info(
-        "yt-dlp format download complete | file=%s bytes=%s send_type=%s",
-        file_path.name,
-        file_path.stat().st_size,
-        send_type,
-    )
     return DownloadArtifact(
         path=file_path,
         file_name=file_path.name,

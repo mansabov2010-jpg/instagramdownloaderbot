@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Awaitable, Callable
 
@@ -138,6 +139,7 @@ def create_dispatcher(settings: Settings, inbox_store: InboxStore | None = None)
 
 async def run() -> None:
     setup_logging()
+    log = logging.getLogger(__name__)
     settings = Settings.from_env()
     settings.ensure_directories()
     inbox_store = InboxStore(settings.download_location / "inbox.sqlite3")
@@ -146,18 +148,16 @@ async def run() -> None:
         token=settings.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
-    try:
-        await bot.delete_webhook(drop_pending_updates=False)
-    except Exception:
-        pass
-
     dispatcher = create_dispatcher(settings, inbox_store=inbox_store)
 
-    logging.getLogger(__name__).info(
-        "Bot is starting | download_dir=%s requests_dir=%s proxy=%s cooldown=%ss",
-        settings.download_location,
-        settings.requests_dir,
-        "enabled" if settings.http_proxy else "disabled",
-        settings.process_max_timeout,
-    )
-    await dispatcher.start_polling(bot)
+    while True:
+        try:
+            await bot.delete_webhook(drop_pending_updates=False)
+            log.info("Bot polling started")
+            await dispatcher.start_polling(bot)
+            break
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            log.warning("Polling error, retrying in 3s: %s", exc)
+            await asyncio.sleep(3)

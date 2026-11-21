@@ -609,7 +609,8 @@ function renderSidebar(data) {
   list.forEach(ch => {
     const div = document.createElement("div");
     div.className = "item" + (ch.chat_id === activeChatId ? " active" : "");
-    div.innerHTML = `<div class="item-title">${esc(ch.title)}</div><div class="item-sub">${esc(ch.last_message || "")}</div>`;
+    const memTag = ch.member_count ? ` · ~${ch.member_count} odam` : "";
+    div.innerHTML = `<div class="item-title">${esc(ch.title)}${esc(memTag)}</div><div class="item-sub">${esc(ch.last_message || "")}</div>`;
     div.onclick = () => { activeChatId = ch.chat_id; clearReply(); loadState(ch.chat_id, true); };
     sb.appendChild(div);
   });

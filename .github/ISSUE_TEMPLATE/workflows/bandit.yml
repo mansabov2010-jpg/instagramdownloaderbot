@@ -1,0 +1,51 @@
+# Ushbu workflow GitHub tomonidan sertifikatlanmagan action'lardan foydalanadi.
+# Ular uchinchi tomon tomonidan taqdim etiladi va alohida
+# xizmat ko'rsatish shartlari, maxfiylik siyosati hamda qo'llab-quvvatlash
+# hujjatlari bilan tartibga solinadi.
+
+# Bandit — Python kodidagi keng tarqalgan xavfsizlik muammolarini topish uchun mo'ljallangan xavfsizlik linteri.
+# Ushbu action kod bazangizda Bandit'ni ishga tushiradi.
+# Tekshiruv natijalari repozitoriyning Security bo'limida topiladi.
+
+# https://github.com/marketplace/actions/bandit-scan ISC litsenziyasiga ega, muallifi: abirismyname
+# https://pypi.org/project/bandit/ Apache v2.0 litsenziyasiga ega, muallifi: PyCQA
+
+name: Bandit
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    # Quyidagi branch'lar yuqoridagilarning ichki to'plami bo'lishi kerak
+    branches: [ "main" ]
+  schedule:
+- cron: '17 5 * * 3'
+
+jobs:
+  bandit:
+    permissions:
+      contents: read # kodni olish uchun actions/checkout uchun
+      security-events: write # SARIF natijalarini yuklash uchun github/codeql-action/upload-sarif uchun
+      actions: read # Action ishga tushish holatini olish uchun github/codeql-action/upload-sarif tomonidan faqat xususiy repozitoriy uchun talab qilinadi
+
+    runs-on: ubuntu-latest
+    steps:
+- uses: actions/checkout@v4
+- name: Bandit Scan
+        uses: shundor/python-bandit-scan@9cc5aa4a006482b8a7f91134412df6772dbda22c
+        with: # ixtiyoriy argumentlar
+          # natijalar topilsa ham 0 bilan chiqish
+          exit_zero: true # ixtiyoriy, standart qiymat DEFAULT
+          # Repozitoriyning Github tokeni (Github tomonidan avtomatik yaratiladi)
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # PR ma'lumotlarini olish uchun kerak.
+          # Bandit ishga tushiriladigan fayl yoki katalog
+          # path: # ixtiyoriy, standart qiymat .
+          # Faqat berilgan muhimlik darajasidagi yoki undan yuqori muammolar haqida hisobot berish. LOW, MEDIUM yoki HIGH bo'lishi mumkin. Standart qiymat UNDEFINED (hammasi)
+          # level: # ixtiyoriy, standart qiymat UNDEFINED
+          # Faqat berilgan ishonchlilik darajasidagi yoki undan yuqori muammolar haqida hisobot berish. LOW, MEDIUM yoki HIGH bo'lishi mumkin. Standart qiymat UNDEFINED (hammasi)
+          # confidence: # ixtiyoriy, standart qiymat UNDEFINED
+          # skanerdan chiqarib tashlanadigan yo'llar ro'yxati, vergul bilan ajratilgan (glob naqshlari qo'llab-quvvatlanadi) (bular config faylida ko'rsatilgan istisno yo'llarga qo'shimcha hisoblanadi) (standart: .svn,CVS,.bzr,.hg,.git,__pycache__,.tox,.eggs,*.egg)
+          # excluded_paths: # ixtiyoriy, standart qiymat DEFAULT
+          # o'tkazib yuboriladigan test ID'lari, vergul bilan ajratilgan
+          # skips: # ixtiyoriy, standart qiymat DEFAULT
+          # buyruq satri argumentlarini taqdim etuvchi .bandit fayliga yo'l
+          # ini_path: # ixtiyoriy, standart qiymat DEFAULT

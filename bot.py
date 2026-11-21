@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -43,6 +44,20 @@ def _tg_api(bot_token: str, method: str, payload: dict) -> tuple[bool, dict | st
         return False, str(exc)
 
 
+def _normalize_sub_target(raw_link: str) -> tuple[str, str]:
+    val = raw_link.strip()
+    if not val:
+        return "", ""
+    if val.lstrip("-").isdigit():
+        return val, ""
+    m = re.search(r"(?:https?://)?(?:t\.me|telegram\.me)/([A-Za-z0-9_]+)/?", val)
+    if m:
+        username = m.group(1)
+        return f"@{username}", f"https://t.me/{username}"
+    clean = val.lstrip("@")
+    return f"@{clean}", f"https://t.me/{clean}"
+
+
 _PANEL_HTML = """<!doctype html>
 <html lang="uz">
 <head>
@@ -53,8 +68,8 @@ _PANEL_HTML = """<!doctype html>
   * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
   body {
     margin: 0;
-    background: #07111c;
-    color: #f5f7fa;
+    background: #081524;
+    color: #f8fafc;
     height: 100vh;
     display: flex;
     flex-direction: column;
@@ -67,70 +82,70 @@ _PANEL_HTML = """<!doctype html>
     inset: 0;
     background-image: var(--panel-bg, url("/assets/bg.jpg"));
     background-size: cover;
-    background-position: center;
-    opacity: 0.24;
-    filter: saturate(1.15) contrast(1.05);
+    background-position: center top;
+    opacity: 0.52;
+    filter: brightness(1.12) saturate(1.22);
     pointer-events: none;
     z-index: 0;
   }
   header, .main { position: relative; z-index: 1; }
   header {
-    background: rgba(15, 27, 40, 0.88);
-    backdrop-filter: blur(10px);
-    padding: 10px 16px;
+    background: rgba(12, 24, 38, 0.78);
+    backdrop-filter: blur(8px);
+    padding: 10px 14px;
     display: flex;
     align-items: center;
-    gap: 12px;
-    border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+    gap: 8px;
+    border-bottom: 1px solid rgba(56, 189, 248, 0.28);
     flex-wrap: wrap;
   }
-  header h2 { margin: 0; font-size: 16px; color: #e0f2fe; }
-  .tabs { display: flex; gap: 6px; }
+  header h2 { margin: 0; font-size: 16px; color: #e0f2fe; margin-right: 4px; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
   .tab {
-    background: rgba(30, 48, 68, 0.85);
-    color: #cbd5e1;
-    border: 1px solid rgba(148, 163, 184, 0.18);
-    padding: 7px 12px;
+    background: rgba(24, 42, 62, 0.82);
+    color: #e2e8f0;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    padding: 7px 11px;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 12.5px;
   }
-  .tab.active { background: #0284c7; color: #fff; font-weight: 600; border-color: #38bdf8; }
+  .tab.active { background: #0284c7; color: #fff; font-weight: 600; border-color: #7dd3fc; }
   .search-box {
     margin-left: auto;
     padding: 6px 10px;
     border-radius: 8px;
-    border: 1px solid rgba(148, 163, 184, 0.25);
-    background: rgba(9, 18, 30, 0.85);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    background: rgba(9, 18, 30, 0.78);
     color: #fff;
     font-size: 13px;
-    min-width: 180px;
+    min-width: 170px;
   }
   .main { display: flex; flex: 1; min-height: 0; }
   .sidebar {
-    width: 310px;
-    background: rgba(15, 27, 40, 0.82);
-    backdrop-filter: blur(8px);
-    border-right: 1px solid rgba(56, 189, 248, 0.18);
+    width: 300px;
+    background: rgba(12, 24, 38, 0.72);
+    backdrop-filter: blur(6px);
+    border-right: 1px solid rgba(56, 189, 248, 0.22);
     overflow-y: auto;
   }
-  .item { padding: 11px 14px; border-bottom: 1px solid rgba(148, 163, 184, 0.12); cursor: pointer; }
-  .item:hover { background: rgba(30, 52, 75, 0.7); }
-  .item.active { background: rgba(2, 132, 199, 0.45); border-left: 3px solid #38bdf8; }
+  .item { padding: 11px 14px; border-bottom: 1px solid rgba(255, 255, 255, 0.09); cursor: pointer; }
+  .item:hover { background: rgba(30, 58, 86, 0.72); }
+  .item.active { background: rgba(2, 132, 199, 0.55); border-left: 3px solid #7dd3fc; }
   .item-title { font-weight: 600; font-size: 14px; }
   .item-sub { font-size: 12px; color: #cbd5e1; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .chat-area { flex: 1; display: flex; flex-direction: column; background: rgba(8, 17, 28, 0.52); min-width: 0; }
+  .chat-area { flex: 1; display: flex; flex-direction: column; background: rgba(8, 17, 28, 0.28); min-width: 0; }
   .chat-top {
     padding: 10px 16px;
-    background: rgba(15, 27, 40, 0.88);
-    backdrop-filter: blur(10px);
-    border-bottom: 1px solid rgba(56, 189, 248, 0.18);
+    background: rgba(12, 24, 38, 0.78);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid rgba(56, 189, 248, 0.22);
     font-size: 14px;
     font-weight: 600;
   }
   .messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
   .msg {
-    max-width: 74%;
+    max-width: 75%;
     padding: 9px 12px;
     border-radius: 12px;
     font-size: 14px;
@@ -138,36 +153,34 @@ _PANEL_HTML = """<!doctype html>
     word-break: break-word;
     backdrop-filter: blur(6px);
   }
-  .msg.in { background: rgba(23, 39, 58, 0.88); align-self: flex-start; border: 1px solid rgba(148, 163, 184, 0.16); }
-  .msg.out { background: rgba(14, 116, 144, 0.88); align-self: flex-end; border: 1px solid rgba(56, 189, 248, 0.35); }
-  .msg-meta { font-size: 11px; color: #bae6fd; margin-bottom: 4px; display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+  .msg.in { background: rgba(18, 33, 51, 0.84); align-self: flex-start; border: 1px solid rgba(148, 163, 184, 0.22); }
+  .msg.out { background: rgba(2, 132, 199, 0.86); align-self: flex-end; border: 1px solid rgba(125, 211, 252, 0.45); }
+  .msg-meta { font-size: 11px; color: #e0f2fe; margin-bottom: 4px; display: flex; justify-content: space-between; gap: 10px; }
   .reply-quote {
-    background: rgba(0, 0, 0, 0.28);
-    border-left: 3px solid #38bdf8;
+    background: rgba(0, 0, 0, 0.3);
+    border-left: 3px solid #7dd3fc;
     padding: 5px 8px;
     border-radius: 6px;
     margin-bottom: 6px;
     font-size: 12px;
-    color: #e2e8f0;
   }
-  .reply-who { font-weight: 600; color: #7dd3fc; font-size: 11px; }
+  .reply-who { font-weight: 600; color: #bae6fd; font-size: 11px; }
   .msg-actions { display: flex; gap: 6px; margin-top: 6px; justify-content: flex-end; }
   .mini-btn {
-    background: rgba(15, 23, 42, 0.65);
-    color: #e2e8f0;
-    border: 1px solid rgba(148, 163, 184, 0.25);
+    background: rgba(15, 23, 42, 0.72);
+    color: #f8fafc;
+    border: 1px solid rgba(148, 163, 184, 0.3);
     border-radius: 6px;
-    padding: 2px 7px;
+    padding: 3px 8px;
     font-size: 11px;
     cursor: pointer;
   }
-  .mini-btn:hover { background: rgba(56, 189, 248, 0.25); }
-  .mini-btn.del:hover { background: rgba(239, 68, 68, 0.35); }
+  .mini-btn.del { background: rgba(185, 28, 28, 0.75); }
   .reply-bar {
     display: none;
     padding: 7px 14px;
-    background: rgba(15, 27, 40, 0.94);
-    border-top: 1px solid rgba(56, 189, 248, 0.25);
+    background: rgba(12, 24, 38, 0.9);
+    border-top: 1px solid rgba(56, 189, 248, 0.3);
     font-size: 12px;
     color: #bae6fd;
     align-items: center;
@@ -177,21 +190,21 @@ _PANEL_HTML = """<!doctype html>
     display: flex;
     gap: 8px;
     padding: 10px 14px;
-    background: rgba(15, 27, 40, 0.9);
-    backdrop-filter: blur(10px);
-    border-top: 1px solid rgba(56, 189, 248, 0.2);
+    background: rgba(12, 24, 38, 0.84);
+    backdrop-filter: blur(8px);
+    border-top: 1px solid rgba(56, 189, 248, 0.25);
   }
   .composer input {
     flex: 1;
     padding: 10px 12px;
     border-radius: 8px;
-    border: 1px solid rgba(148, 163, 184, 0.3);
-    background: rgba(9, 18, 30, 0.88);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    background: rgba(9, 18, 30, 0.84);
     color: #fff;
     font-size: 14px;
   }
-  .composer button {
-    padding: 10px 16px;
+  .composer button, .primary-btn {
+    padding: 10px 15px;
     border-radius: 8px;
     border: none;
     background: #0284c7;
@@ -199,9 +212,48 @@ _PANEL_HTML = """<!doctype html>
     font-weight: 600;
     cursor: pointer;
   }
+  .tool-panel {
+    display: none;
+    padding: 16px;
+    overflow-y: auto;
+    flex: 1;
+    gap: 14px;
+    flex-direction: column;
+  }
+  .card {
+    background: rgba(12, 24, 38, 0.82);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    border-radius: 12px;
+    padding: 14px;
+    max-width: 720px;
+  }
+  .card h3 { margin: 0 0 10px 0; font-size: 15px; color: #e0f2fe; }
+  .card textarea, .card input[type="text"] {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    background: rgba(9, 18, 30, 0.85);
+    color: #fff;
+    font-size: 13.5px;
+    margin-bottom: 10px;
+  }
+  .checks { display: flex; gap: 14px; margin-bottom: 10px; font-size: 13px; flex-wrap: wrap; }
+  .sub-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(15, 28, 44, 0.78);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    margin-bottom: 8px;
+    gap: 8px;
+  }
   @media (max-width: 768px) {
     .main { flex-direction: column; }
-    .sidebar { width: 100%; max-height: 36vh; border-right: none; border-bottom: 1px solid rgba(56, 189, 248, 0.2); }
+    .sidebar { width: 100%; max-height: 28vh; border-right: none; border-bottom: 1px solid rgba(56, 189, 248, 0.25); }
     .search-box { margin-left: 0; width: 100%; }
   }
 </style>
@@ -213,12 +265,15 @@ _PANEL_HTML = """<!doctype html>
     <button class="tab active" data-kind="private" onclick="switchTab('private')">Lichkalar</button>
     <button class="tab" data-kind="groups" onclick="switchTab('groups')">Guruh / Kanallar</button>
     <button class="tab" data-kind="contacts" onclick="switchTab('contacts')">Kontaktlar</button>
+    <button class="tab" data-kind="broadcast" onclick="switchTab('broadcast')">Barchaga xabar</button>
+    <button class="tab" data-kind="forcesub" onclick="switchTab('forcesub')">Majburiy obuna</button>
   </div>
   <input class="search-box" id="searchInput" placeholder="Xabar qidirish..." oninput="renderMessages(lastData)">
 </header>
 <div class="main">
   <div class="sidebar" id="sidebar"></div>
-  <div class="chat-area">
+
+  <div class="chat-area" id="chatArea">
     <div class="chat-top" id="chatTop">Chat tanlang</div>
     <div class="messages" id="messages"></div>
     <div class="reply-bar" id="replyBar">
@@ -229,6 +284,36 @@ _PANEL_HTML = """<!doctype html>
       <input id="msgInput" placeholder="Bot nomidan xabar yozing..." autocomplete="off">
       <button type="submit">Yuborish</button>
     </form>
+  </div>
+
+  <div class="tool-panel" id="broadcastPanel">
+    <div class="card">
+      <h3>Barchaga xabar yuborish</h3>
+      <div class="checks">
+        <label><input type="checkbox" id="bcContacts" checked> Kontaktlar (lichkalar)</label>
+        <label><input type="checkbox" id="bcGroups" checked> Guruh va kanallar</label>
+      </div>
+      <textarea id="bcText" rows="4" placeholder="Yuboriladigan xabar matnini yozing..."></textarea>
+      <button class="primary-btn" onclick="runBroadcast()">Yuborishni boshlash</button>
+      <div id="bcResult" style="margin-top:10px;font-size:13px;color:#bae6fd;"></div>
+    </div>
+  </div>
+
+  <div class="tool-panel" id="forcesubPanel">
+    <div class="card">
+      <h3>Majburiy obuna qo‘shish</h3>
+      <div style="font-size:12.5px;color:#cbd5e1;margin-bottom:10px;">
+        Kanal yoki guruh havolasini (`https://t.me/...` yoki `@username`) kiriting. Bot o‘sha kanal/guruhga admin bo‘lishi kerak. Qo‘shilmasa bot odatdagidek ishlayveradi.
+      </div>
+      <input type="text" id="subLink" placeholder="Kanal yoki guruh havolasi / @username (masalan: https://t.me/kanal_nomi)">
+      <input type="text" id="subTitle" placeholder="Tugma nomi (ixtiyoriy, masalan: Rasmiy kanal)">
+      <button class="primary-btn" onclick="addForceSub()">Majburiy obuna qo‘shish</button>
+      <div id="subMsg" style="margin-top:10px;font-size:13px;color:#bae6fd;"></div>
+    </div>
+    <div class="card">
+      <h3>Faol majburiy obunalar</h3>
+      <div id="subList"></div>
+    </div>
   </div>
 </div>
 <script>
@@ -241,26 +326,28 @@ if (bgUrl) {
 let currentKind = "private";
 let activeChatId = null;
 let replyTarget = null;
-let lastData = { messages: [] };
+let lastData = { messages: [], force_subs: [] };
 
 function switchTab(kind) {
   currentKind = kind;
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.kind === kind));
-  activeChatId = null;
-  clearReply();
+  const isTool = (kind === "broadcast" || kind === "forcesub");
+  document.getElementById("chatArea").style.display = isTool ? "none" : "flex";
+  document.getElementById("broadcastPanel").style.display = kind === "broadcast" ? "flex" : "none";
+  document.getElementById("forcesubPanel").style.display = kind === "forcesub" ? "flex" : "none";
+  if (!isTool) {
+    activeChatId = null;
+    clearReply();
+  }
   loadState();
 }
 
 function setReply(m) {
   if (!m.tg_message_id) {
-    alert("Bu xabarda Telegram message_id yo'q, reply qilib bo'lmaydi.");
+    alert("Bu xabarda Telegram message_id yo'q.");
     return;
   }
-  replyTarget = {
-    tg_message_id: m.tg_message_id,
-    sender_name: m.sender_name,
-    text: m.text
-  };
+  replyTarget = { tg_message_id: m.tg_message_id, sender_name: m.sender_name, text: m.text };
   document.getElementById("replyPreview").textContent = `Reply → ${m.sender_name}: ${m.text}`;
   document.getElementById("replyBar").style.display = "flex";
   document.getElementById("msgInput").focus();
@@ -273,21 +360,13 @@ function clearReply() {
 }
 
 async function editOutMsg(m) {
-  if (!m.tg_message_id) {
-    alert("Bu xabar Telegram ID'siz saqlangan.");
-    return;
-  }
+  if (!m.tg_message_id) return alert("Telegram message_id topilmadi.");
   const updated = prompt("Yangi matnni kiriting:", m.text);
   if (updated === null || !updated.trim() || updated.trim() === m.text) return;
   const res = await fetch(`/api/edit?key=${encodeURIComponent(KEY)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      row_id: m.id,
-      chat_id: activeChatId,
-      message_id: m.tg_message_id,
-      text: updated.trim()
-    })
+    body: JSON.stringify({ row_id: m.id, chat_id: activeChatId, message_id: m.tg_message_id, text: updated.trim() })
   });
   const out = await res.json();
   if (out.ok) loadState(activeChatId);
@@ -299,20 +378,83 @@ async function deleteOutMsg(m) {
   const res = await fetch(`/api/delete?key=${encodeURIComponent(KEY)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      row_id: m.id,
-      chat_id: activeChatId,
-      message_id: m.tg_message_id || null
-    })
+    body: JSON.stringify({ row_id: m.id, chat_id: activeChatId, message_id: m.tg_message_id || null })
   });
   const out = await res.json();
   if (out.ok) loadState(activeChatId);
   else alert("O'chirish xatosi: " + out.error);
 }
 
+async function runBroadcast() {
+  const txt = document.getElementById("bcText").value.trim();
+  const incContacts = document.getElementById("bcContacts").checked;
+  const incGroups = document.getElementById("bcGroups").checked;
+  if (!txt) return alert("Xabar matnini kiriting.");
+  const res = await fetch(`/api/broadcast?key=${encodeURIComponent(KEY)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: txt, include_contacts: incContacts, include_groups: incGroups })
+  });
+  const out = await res.json();
+  if (out.ok) {
+    document.getElementById("bcResult").textContent = `Yuborildi: ${out.sent} ta chatga, xato: ${out.failed} ta.`;
+    document.getElementById("bcText").value = "";
+  } else {
+    document.getElementById("bcResult").textContent = "Xato: " + out.error;
+  }
+}
+
+async function addForceSub() {
+  const link = document.getElementById("subLink").value.trim();
+  const title = document.getElementById("subTitle").value.trim();
+  if (!link) return alert("Kanal yoki guruh havolasini kiriting.");
+  const res = await fetch(`/api/forcesub/add?key=${encodeURIComponent(KEY)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ link, title })
+  });
+  const out = await res.json();
+  if (out.ok) {
+    document.getElementById("subLink").value = "";
+    document.getElementById("subTitle").value = "";
+    document.getElementById("subMsg").textContent = "Majburiy obuna qo‘shildi!";
+    loadState();
+  } else {
+    document.getElementById("subMsg").textContent = "Xato: " + out.error;
+  }
+}
+
+async function removeForceSub(id) {
+  const res = await fetch(`/api/forcesub/delete?key=${encodeURIComponent(KEY)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id })
+  });
+  const out = await res.json();
+  if (out.ok) loadState();
+}
+
+function renderForceSubs(subs) {
+  const box = document.getElementById("subList");
+  if (!subs || !subs.length) {
+    box.innerHTML = `<div style="font-size:13px;color:#94a3b8;">Majburiy obuna qo‘shilmagan — bot odatdagidek ishlaydi.</div>`;
+    return;
+  }
+  box.innerHTML = subs.map(s => `
+    <div class="sub-row">
+      <div>
+        <div style="font-weight:600;font-size:13.5px;">${esc(s.title || s.target)}</div>
+        <div style="font-size:12px;color:#bae6fd;">${esc(s.target)} · ${esc(s.invite_url)}</div>
+      </div>
+      <button class="mini-btn del" onclick="removeForceSub(${s.id})">O‘chirish</button>
+    </div>
+  `).join("");
+}
+
 async function loadState(selectId = null) {
   const idParam = selectId !== null ? selectId : (activeChatId !== null ? activeChatId : "");
-  const res = await fetch(`/api/state?key=${encodeURIComponent(KEY)}&kind=${currentKind}&chat_id=${idParam}`);
+  const kindParam = (currentKind === "broadcast" || currentKind === "forcesub") ? "groups" : currentKind;
+  const res = await fetch(`/api/state?key=${encodeURIComponent(KEY)}&kind=${kindParam}&chat_id=${idParam}`);
   if (!res.ok) {
     document.getElementById("chatTop").textContent = "Kirish kaliti noto'g'ri (?key=BOT_TOKEN)";
     return;
@@ -322,6 +464,7 @@ async function loadState(selectId = null) {
   activeChatId = data.active_chat_id;
   renderSidebar(data);
   renderMessages(data);
+  renderForceSubs(data.force_subs || []);
 }
 
 function renderSidebar(data) {
@@ -338,7 +481,12 @@ function renderSidebar(data) {
     });
     return;
   }
-  (data.chats || []).forEach(ch => {
+  const list = data.chats || [];
+  if (!list.length) {
+    sb.innerHTML = `<div class="item"><div class="item-sub">Hozircha ro‘yxat bo‘sh</div></div>`;
+    return;
+  }
+  list.forEach(ch => {
     const div = document.createElement("div");
     div.className = "item" + (ch.chat_id === activeChatId ? " active" : "");
     div.innerHTML = `<div class="item-title">${esc(ch.title)}</div><div class="item-sub">${esc(ch.last_message || "")}</div>`;
@@ -545,6 +693,61 @@ class _HealthHandler(BaseHTTPRequestHandler):
                     {"chat_id": chat_id, "message_id": int(message_id)},
                 )
             store.delete_outgoing_message(row_id=row_id)
+            self._send_json(200, {"ok": True})
+            return
+
+        if parsed.path == "/api/broadcast":
+            text = str(data.get("text", "")).strip()
+            inc_contacts = bool(data.get("include_contacts", True))
+            inc_groups = bool(data.get("include_groups", True))
+            if not text:
+                self._send_json(400, {"ok": False, "error": "Matn bo'sh"})
+                return
+            targets = store.get_broadcast_targets(
+                include_contacts=inc_contacts,
+                include_groups=inc_groups,
+            )
+            sent = 0
+            failed = 0
+            for tid in targets:
+                ok, res = _tg_api(settings.bot_token, "sendMessage", {"chat_id": tid, "text": text})
+                if ok:
+                    sent += 1
+                    store.record_outgoing(
+                        chat_id=tid,
+                        text=text,
+                        tg_message_id=res.get("message_id") if isinstance(res, dict) else None,
+                    )
+                else:
+                    failed += 1
+            self._send_json(200, {"ok": True, "sent": sent, "failed": failed})
+            return
+
+        if parsed.path == "/api/forcesub/add":
+            raw_link = str(data.get("link", "")).strip()
+            custom_title = str(data.get("title", "")).strip()
+            target, invite_url = _normalize_sub_target(raw_link)
+            if not target:
+                self._send_json(400, {"ok": False, "error": "Havola yoki username noto'g'ri"})
+                return
+            title = custom_title
+            ok, chat_info = _tg_api(settings.bot_token, "getChat", {"chat_id": target})
+            if ok and isinstance(chat_info, dict):
+                if not title:
+                    title = str(chat_info.get("title") or target)
+                if not invite_url:
+                    invite_url = str(chat_info.get("invite_link") or f"https://t.me/{target.lstrip('@')}")
+            if not invite_url:
+                self._send_json(400, {"ok": False, "error": "Guruh/kanal uchun t.me havola kiriting"})
+                return
+            store.add_force_sub(target=target, title=title or target, invite_url=invite_url)
+            self._send_json(200, {"ok": True})
+            return
+
+        if parsed.path == "/api/forcesub/delete":
+            sub_id = int(data.get("id", 0))
+            if sub_id:
+                store.remove_force_sub(sub_id)
             self._send_json(200, {"ok": True})
             return
 

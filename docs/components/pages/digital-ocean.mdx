@@ -1,0 +1,21 @@
+# DigitalOcean’da joylashtirish (Deploy)
+
+DigitalOcean ushbu loyiha uchun quyidagi holatlarda eng qulay hisoblanadi:
+
+- repozitoriyadan **App Platform** orqali joylashtirmoqchi bo‘lsangiz
+- **Docker**, xotira va yangilanishlarni o‘zingiz boshqaradigan virtual mashina (VM) ishlatmoqchi bo‘lsangiz
+
+## Tavsiya etilgan usul
+
+Asosiy katalog (root)dagi Docker’dan foydalaning.
+
+1. Repozitoriyani fork qiling yoki klonlang.
+2. Kerakli muhit o‘zgaruvchilarini (`environment variables`) kiriting.
+3. Asosiy katalogdagi `Dockerfile` asosida Docker obrazini (`image`) yig‘ing.
+4. Agar yuklangan fayllar yoki miniatyuralar (`thumbnails`) saqlanib qolishini xohlasangiz, konteynerni ulangan katalog (`volume`) bilan ishga tushiring.
+
+## Eslatmalar
+
+- Python `3.11` versiyasidan foydalaning
+- konteyner ichida `DOWNLOAD_LOCATION` katalogi yozish uchun ochiq (`writable`) bo‘lsin
+- agar VM ishlatsangiz, qo‘lda ishga tushirish uchun eng sodda buyruq — `uv run python bot.py`

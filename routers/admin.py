@@ -14,7 +14,6 @@ from services.inbox_store import InboxStore
 router = Router(name="admin_menu")
 logger = logging.getLogger(__name__)
 
-# user_id -> {"mode": "broadcast" | "add_forcesub", "step": ...}
 _ADMIN_SESSIONS: dict[int, dict[str, str]] = {}
 
 
@@ -77,9 +76,9 @@ async def cmd_admin(message: Message, settings: Settings, inbox_store: InboxStor
     stats = inbox_store.get_stats_summary()
     await message.answer(
         "🛠 <b>Admin Boshqaruv Menyusi</b>\n\n"
-        f"👥 <b>A’zolar (kontaktlar):</b> {stats['users_count']} ta\n"
+        f"👥 <b>A’zolar:</b> {stats['users_count']} ta\n"
         f"💬 <b>Guruh / Kanallar:</b> {stats['groups_count']} ta\n"
-        f"👤 <b>Guruhlardagi jami odamlar:</b> {stats['total_group_members']} ta\n\n"
+        f"👤 <b>Guruhlardagi jami odamlar:</b> ~{stats['total_group_members']} ta\n\n"
         "Kerakli bo‘limni tanlang:",
         reply_markup=_admin_keyboard(),
     )
@@ -112,9 +111,9 @@ async def on_admin_callback(
         if callback.message:
             await callback.message.edit_text(
                 "🛠 <b>Admin Boshqaruv Menyusi</b>\n\n"
-                f"👥 <b>A’zolar (kontaktlar):</b> {stats['users_count']} ta\n"
+                f"👥 <b>A’zolar:</b> {stats['users_count']} ta\n"
                 f"💬 <b>Guruh / Kanallar:</b> {stats['groups_count']} ta\n"
-                f"👤 <b>Guruhlardagi jami odamlar:</b> {stats['total_group_members']} ta\n\n"
+                f"👤 <b>Guruhlardagi jami odamlar:</b> ~{stats['total_group_members']} ta\n\n"
                 "Kerakli bo‘limni tanlang:",
                 reply_markup=_admin_keyboard(),
             )
@@ -148,10 +147,10 @@ async def on_admin_callback(
         lines = [
             "💬 <b>Guruh va Kanallar Statistikasi</b>\n",
             f"• <b>Umumiy guruh/kanallar:</b> {len(groups)} ta",
-            f"• <b>Barcha guruhlardagi odamlar:</b> {total_members} ta\n",
+            f"• <b>Guruhlardagi jami odamlar:</b> ~{total_members} ta\n",
         ]
         if not groups:
-            lines.append("Hozircha birorta guruh yoki kanal qayd etilmagan.")
+            lines.append("Hozircha guruh yoki kanal topilmadi.")
         else:
             for idx, g in enumerate(groups, start=1):
                 title = html.escape(g.get("title") or f"Chat {g['chat_id']}")
@@ -180,7 +179,7 @@ async def on_admin_callback(
         )
         if callback.message:
             await callback.message.edit_text(
-                "📢 <b>Barchaga xabar yuborish</b>\n\nKimga xabar yubormoqchisiz?",
+                "📢 <b>Barchaga xabar yuborish</b>\n\nKimga yubormoqchisiz?",
                 reply_markup=kb,
             )
         await callback.answer()
@@ -208,7 +207,7 @@ async def on_admin_callback(
         subs = inbox_store.list_force_subs()
         lines = ["🔒 <b>Majburiy Obuna Boshqaruvi</b>\n"]
         if not subs:
-            lines.append("Hozircha majburiy obuna qo‘shilmagan — bot odatdagidek ishlaydi.")
+            lines.append("Majburiy obuna qo‘shilmagan — bot odatdagidek ishlaydi.")
         else:
             for s in subs:
                 lines.append(
@@ -244,7 +243,7 @@ async def on_admin_callback(
             await callback.message.edit_text(
                 "🔗 <b>Majburiy obuna uchun kanal yoki guruh havolasini yuboring!</b>\n\n"
                 "Masalan: <code>https://t.me/kanal_nomi</code> yoki <code>@kanal_nomi</code>\n"
-                "<i>Eslatma: bot o‘sha kanal yoki guruhda admin bo‘lishi kerak.</i>",
+                "<i>Bot o‘sha kanal yoki guruhda admin bo‘lishi kerak.</i>",
                 reply_markup=kb,
             )
         await callback.answer()
@@ -255,17 +254,11 @@ async def on_admin_callback(
         if sub_id_str.isdigit():
             inbox_store.remove_force_sub(int(sub_id_str))
         await callback.answer("O'chirildi")
-        # Menyuni yangilash
         callback.data = "adm:fsub_menu"
         await on_admin_callback(callback, bot, settings, inbox_store)
 
 
-@router.message(
-    F.chat.type == "private",
-    F.text,
-    ~F.text.startswith("/"),
-    F.from_user.id.func(lambda uid: bool(uid and uid in _ADMIN_SESSIONS)),
-)
+@router.message(F.chat.type == "private", F.text, ~F.text.startswith("/"))
 async def handle_admin_session_input(
     message: Message,
     bot: Bot,

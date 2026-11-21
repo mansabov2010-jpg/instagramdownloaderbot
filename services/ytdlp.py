@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
+import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -15,10 +17,33 @@ from utils.models import DownloadArtifact, DownloadOption, ParsedInput
 VIDEO_EXTENSIONS = {"mp4", "mkv", "webm", "mov"}
 AUDIO_EXTENSIONS = {"mp3", "m4a", "aac", "wav", "flac", "opus", "weba"}
 logger = logging.getLogger(__name__)
+_COOKIE_FILE_PATH: Path | None = None
+
+
+def _get_cookies_file(settings: Settings) -> Path | None:
+    global _COOKIE_FILE_PATH
+    raw_b64 = settings.ytdlp_cookies_b64.strip()
+    if not raw_b64:
+        return None
+
+    if _COOKIE_FILE_PATH and _COOKIE_FILE_PATH.exists():
+        return _COOKIE_FILE_PATH
+
+    cleaned_b64 = "".join(raw_b64.split())
+    decoded_bytes = base64.b64decode(cleaned_b64, validate=False)
+    tmp = tempfile.NamedTemporaryFile(mode="wb", suffix=".txt", delete=False)
+    tmp.write(decoded_bytes)
+    tmp.flush()
+    tmp.close()
+    _COOKIE_FILE_PATH = Path(tmp.name)
+    return _COOKIE_FILE_PATH
 
 
 def _command_base(parsed_input: ParsedInput, settings: Settings) -> list[str]:
     command = ["yt-dlp", "--no-warnings"]
+    cookies_file = _get_cookies_file(settings)
+    if cookies_file:
+        command.extend(["--cookies", str(cookies_file)])
     if settings.http_proxy:
         command.extend(["--proxy", settings.http_proxy])
     if parsed_input.username:
@@ -320,6 +345,11 @@ async def download_selected_format(
 
     logger.info(
         "Starting yt-dlp format download | source=%s mode=%s format=%s send_type=%s work_dir=%s",
+        safe_url_label(parsed_input.source_url),
+        option.mode,
+        format_selector,
+        send_type,
+        work_dir,
     )
     await _run_command(command, cwd=work_dir)
     file_path = _pick_downloaded_file(work_dir)

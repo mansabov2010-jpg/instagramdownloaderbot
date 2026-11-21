@@ -6,7 +6,7 @@ import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 from urllib.request import Request, urlopen
 
 from app import run
@@ -16,7 +16,7 @@ from services.inbox_store import InboxStore
 
 _SETTINGS: Settings | None = None
 _INBOX: InboxStore | None = None
-_BG_FILE = Path(__file__).resolve().parent / "assets" / "bg.jpg"
+_BG_FILE = Path(__file__).resolve().parent / "assets" / "Без названия.jpg"
 
 
 def _get_store() -> tuple[Settings, InboxStore]:
@@ -438,7 +438,7 @@ class _HealthHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
 
-        if parsed.path == "/assets/bg.jpg" and _BG_FILE.is_file():
+        if parsed.path in ("/assets/bg.jpg", f"/assets/{quote('Без названия.jpg')}") and _BG_FILE.is_file():
             img_bytes = _BG_FILE.read_bytes()
             self.send_response(200)
             self.send_header("Content-Type", "image/jpeg")

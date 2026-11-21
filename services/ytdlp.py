@@ -86,18 +86,27 @@ async def _run_command(command: list[str], cwd: Path | None = None) -> tuple[str
     return stdout.decode().strip(), stderr.decode().strip()
 
 
-def _is_audio_only(format_note: str | None) -> bool:
-    return bool(format_note and "audio only" in format_note.lower())
+def _is_audio_only(format_data: dict) -> bool:
+    format_note = (format_data.get("format_note") or "").lower()
+    vcodec = (format_data.get("vcodec") or "").lower()
+    acodec = (format_data.get("acodec") or "").lower()
+    if "audio only" in format_note:
+        return True
+    if vcodec == "none" and acodec != "none":
+        return True
+    return False
 
 
 def _label_for_format(format_data: dict, index: int) -> str:
+    height = format_data.get("height")
     format_note = (
-        format_data.get("format_note")
+        (f"{height}p" if height else None)
+        or format_data.get("format_note")
         or format_data.get("format")
         or f"Format {index + 1}"
     )
     size = format_data.get("filesize") or format_data.get("filesize_approx") or 0
-    ext = format_data.get("ext", "")
+    ext = format_data.get("ext") or "mp4"
     return f"Video {format_note} {ext} {humanbytes(size)}".strip()
 
 
@@ -147,20 +156,25 @@ def build_quick_youtube_options() -> list[DownloadOption]:
 def build_ytdlp_options(info: dict) -> list[DownloadOption]:
     options: list[DownloadOption] = []
     formats = info.get("formats") or []
+    seen_labels: set[str] = set()
+
     for index, format_data in enumerate(formats):
-        format_note = format_data.get("format_note") or format_data.get("format")
-        if format_note and "dash" in format_note.lower():
+        if _is_audio_only(format_data):
             continue
-        if _is_audio_only(format_note):
-            continue
-        ext = format_data.get("ext")
         format_id = format_data.get("format_id")
-        if not ext or not format_id:
+        if not format_id:
             continue
+        ext = (format_data.get("ext") or "mp4").lower()
+        if ext in {"mhtml", "html", "json"}:
+            continue
+        label = _label_for_format(format_data, index)
+        if label in seen_labels:
+            continue
+        seen_labels.add(label)
         options.append(
             DownloadOption(
                 option_id=_option_id("fmt", len(options)),
-                label=_label_for_format(format_data, index),
+                label=label,
                 send_type="video",
                 mode="ytdlp_format",
                 format_id=str(format_id),
@@ -193,11 +207,7 @@ def build_direct_options(
     if not ext:
         ext = _ext_from_url(source_url)
 
-    send_type = "document"
-    if ext and ext.lower() in VIDEO_EXTENSIONS:
-        send_type = "video"
-    elif ext and ext.lower() in AUDIO_EXTENSIONS:
-        send_type = "audio"
+    send_type = "video" if (ext and ext.lower() in VIDEO_EXTENSIONS) else "audio" if (ext and ext.lower() in AUDIO_EXTENSIONS) else "document"
 
     options = [
         DownloadOption(
@@ -351,18 +361,19 @@ async def download_selected_format(
     else:
         format_selector = option.format_id or "best"
         if _is_youtube_url(parsed_input.source_url):
-            format_selector = f"{format_selector}+bestaudio"
+            format_selector = f"{format_selector}+bestaudio/best"
         command.extend(
             [
                 "-f",
                 format_selector,
-                "--embed-subs",
+                "--merge-output-format",
+                "mp4",
                 "-o",
                 output_template,
                 parsed_input.source_url,
             ]
         )
-        send_type = option.send_type
+        send_type = "video"
 
     logger.info(
         "Starting yt-dlp format download | source=%s mode=%s format=%s send_type=%s work_dir=%s",

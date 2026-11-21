@@ -53,6 +53,10 @@ class InboxStore:
                 CREATE TABLE IF NOT EXISTS messages (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     chat_id INTEGER NOT NULL,
+                    tg_message_id INTEGER,
+                    reply_to_tg_id INTEGER,
+                    reply_to_sender TEXT DEFAULT '',
+                    reply_to_text TEXT DEFAULT '',
                     sender_name TEXT NOT NULL,
                     direction TEXT NOT NULL,
                     text TEXT NOT NULL,
@@ -60,7 +64,20 @@ class InboxStore:
                 )
                 """
             )
+            self._ensure_columns(conn)
             conn.commit()
+
+    def _ensure_columns(self, conn: sqlite3.Connection) -> None:
+        cols = {row["name"] for row in conn.execute("PRAGMA table_info(messages)").fetchall()}
+        additions = {
+            "tg_message_id": "INTEGER",
+            "reply_to_tg_id": "INTEGER",
+            "reply_to_sender": "TEXT DEFAULT ''",
+            "reply_to_text": "TEXT DEFAULT ''",
+        }
+        for col, col_type in additions.items():
+            if col not in cols:
+                conn.execute(f"ALTER TABLE messages ADD COLUMN {col} {col_type}")
 
     def record_incoming(
         self,
@@ -72,6 +89,9 @@ class InboxStore:
         full_name: str | None,
         user_username: str | None,
         text: str,
+        tg_message_id: int | None = None,
+        reply_to_tg_id: int | None = None,
+        save_contact: bool = False,
     ) -> None:
         now = _now_iso()
         clean_title = (chat_title or "Noma'lum chat").strip()
@@ -95,7 +115,8 @@ class InboxStore:
                 (chat_id, chat_type, clean_title, c_user, preview[:160], now),
             )
 
-            if user_id:
+            # Faqat lichkada yozgan foydalanuvchilar kontaktda saqlanadi
+            if save_contact and chat_type == "private" and user_id:
                 conn.execute(
                     """
                     INSERT INTO contacts (user_id, full_name, username, last_chat_id, updated_at)
@@ -109,19 +130,64 @@ class InboxStore:
                     (user_id, u_name, u_user, chat_id, now),
                 )
 
+            reply_sender = ""
+            reply_text = ""
+            if reply_to_tg_id:
+                ref = conn.execute(
+                    """
+                    SELECT sender_name, text FROM messages
+                    WHERE chat_id = ? AND tg_message_id = ?
+                    ORDER BY id DESC LIMIT 1
+                    """,
+                    (chat_id, reply_to_tg_id),
+                ).fetchone()
+                if ref:
+                    reply_sender = ref["sender_name"] or ""
+                    reply_text = (ref["text"] or "")[:100]
+
             conn.execute(
                 """
-                INSERT INTO messages (chat_id, sender_name, direction, text, created_at)
-                VALUES (?, ?, 'in', ?, ?)
+                INSERT INTO messages (
+                    chat_id, tg_message_id, reply_to_tg_id, reply_to_sender, reply_to_text,
+                    sender_name, direction, text, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, 'in', ?, ?)
                 """,
-                (chat_id, u_name, preview, now),
+                (
+                    chat_id,
+                    tg_message_id,
+                    reply_to_tg_id,
+                    reply_sender,
+                    reply_text,
+                    u_name,
+                    preview,
+                    now,
+                ),
             )
             conn.commit()
 
-    def record_outgoing(self, chat_id: int, text: str, chat_type: str = "private", title: str | None = None) -> None:
+    def record_outgoing(
+        self,
+        chat_id: int,
+        text: str,
+        tg_message_id: int | None = None,
+        reply_to_tg_id: int | None = None,
+        reply_to_sender: str = "",
+        reply_to_text: str = "",
+        chat_type: str | None = None,
+        title: str | None = None,
+    ) -> int:
         now = _now_iso()
-        preview = text.strip()[:160]
+        clean_text = text.strip()
+        preview = clean_text[:160]
         with self._lock, self._connect() as conn:
+            existing = conn.execute(
+                "SELECT chat_type, title FROM chats WHERE chat_id = ?",
+                (chat_id,),
+            ).fetchone()
+            resolved_type = chat_type or (existing["chat_type"] if existing else "private")
+            resolved_title = title or (existing["title"] if existing else f"Chat {chat_id}")
+
             conn.execute(
                 """
                 INSERT INTO chats (chat_id, chat_type, title, username, last_message, updated_at)
@@ -131,14 +197,52 @@ class InboxStore:
                     updated_at = excluded.updated_at,
                     title = CASE WHEN ? IS NOT NULL AND ? != '' THEN ? ELSE chats.title END
                 """,
-                (chat_id, chat_type, title or f"Chat {chat_id}", preview, now, title, title, title),
+                (
+                    chat_id,
+                    resolved_type,
+                    resolved_title,
+                    preview,
+                    now,
+                    title,
+                    title,
+                    title,
+                ),
             )
-            conn.execute(
+            cur = conn.execute(
                 """
-                INSERT INTO messages (chat_id, sender_name, direction, text, created_at)
-                VALUES (?, 'Bot', 'out', ?, ?)
+                INSERT INTO messages (
+                    chat_id, tg_message_id, reply_to_tg_id, reply_to_sender, reply_to_text,
+                    sender_name, direction, text, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, 'Bot', 'out', ?, ?)
                 """,
-                (chat_id, text.strip(), now),
+                (
+                    chat_id,
+                    tg_message_id,
+                    reply_to_tg_id,
+                    reply_to_sender,
+                    reply_to_text[:100],
+                    clean_text,
+                    now,
+                ),
+            )
+            conn.commit()
+            return int(cur.lastrowid)
+
+    def update_outgoing_message(self, row_id: int, new_text: str) -> None:
+        clean_text = new_text.strip()
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                "UPDATE messages SET text = ? WHERE id = ? AND direction = 'out'",
+                (clean_text, row_id),
+            )
+            conn.commit()
+
+    def delete_outgoing_message(self, row_id: int) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                "DELETE FROM messages WHERE id = ? AND direction = 'out'",
+                (row_id,),
             )
             conn.commit()
 
@@ -150,7 +254,7 @@ class InboxStore:
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT * FROM chats WHERE chat_type != 'private' ORDER BY updated_at DESC"
+                    "SELECT * FROM chats WHERE chat_type IN ('group', 'supergroup', 'channel') ORDER BY updated_at DESC"
                 ).fetchall()
             return [dict(r) for r in rows]
 
@@ -161,7 +265,7 @@ class InboxStore:
             ).fetchall()
             return [dict(r) for r in rows]
 
-    def get_messages(self, chat_id: int, limit: int = 80) -> list[dict]:
+    def get_messages(self, chat_id: int, limit: int = 100) -> list[dict]:
         with self._lock, self._connect() as conn:
             rows = conn.execute(
                 """
@@ -180,11 +284,18 @@ class InboxStore:
         chats = self.get_chats(kind if kind in ("private", "groups") else "private")
         contacts = self.get_contacts()
         active_id = chat_id
-        if active_id is None:
-            if kind == "contacts" and contacts:
-                active_id = contacts[0]["user_id"]
-            elif chats:
-                active_id = chats[0]["chat_id"]
+        if kind == "contacts":
+            if active_id is not None:
+                c_row = next((c for c in contacts if c["user_id"] == active_id), None)
+                if c_row and c_row.get("last_chat_id"):
+                    active_id = c_row["last_chat_id"]
+            if active_id is None and contacts:
+                active_id = contacts[0].get("last_chat_id") or contacts[0]["user_id"]
+        else:
+            valid_ids = {c["chat_id"] for c in chats}
+            if active_id not in valid_ids:
+                active_id = chats[0]["chat_id"] if chats else None
+
         messages = self.get_messages(active_id) if active_id is not None else []
         return json.dumps(
             {

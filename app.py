@@ -64,16 +64,6 @@ class InboxLoggingMiddleware(BaseMiddleware):
 
             reply_id = event.reply_to_message.message_id if event.reply_to_message else None
 
-            member_cnt: int | None = None
-            bot_obj: Bot | None = data.get("bot")
-            if chat_type != "private" and bot_obj is not None:
-                try:
-                    c = await bot_obj.get_chat_member_count(chat.id)
-                    if isinstance(c, int) and c > 0:
-                        member_cnt = c
-                except Exception:
-                    member_cnt = None
-
             self.inbox_store.record_incoming(
                 chat_id=chat.id,
                 chat_type=chat_type,
@@ -86,7 +76,6 @@ class InboxLoggingMiddleware(BaseMiddleware):
                 tg_message_id=event.message_id,
                 reply_to_tg_id=reply_id,
                 save_contact=(chat_type == "private"),
-                member_count=member_cnt,
             )
 
         return await handler(event, data)
@@ -157,6 +146,11 @@ async def run() -> None:
         token=settings.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
+    try:
+        await bot.delete_webhook(drop_pending_updates=False)
+    except Exception:
+        pass
+
     dispatcher = create_dispatcher(settings, inbox_store=inbox_store)
 
     logging.getLogger(__name__).info(

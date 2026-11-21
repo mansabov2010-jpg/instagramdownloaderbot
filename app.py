@@ -7,10 +7,9 @@ from typing import Any, Awaitable, Callable
 from aiogram import BaseMiddleware, Bot, Dispatcher, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import ChatMemberUpdated, Message, TelegramObject
+from aiogram.types import BotCommand, ChatMemberUpdated, Message, TelegramObject
 
 from config import Settings
-from utils.logging_config import setup_logging
 from routers.admin import router as admin_router
 from routers.callbacks import router as callbacks_router
 from routers.commands import router as commands_router
@@ -20,6 +19,7 @@ from services.cooldown import CooldownManager
 from services.inbox_store import InboxStore
 from services.request_store import RequestStore
 from services.thumbnail_store import ThumbnailStore
+from utils.logging_config import setup_logging
 
 
 class InboxLoggingMiddleware(BaseMiddleware):
@@ -153,6 +153,13 @@ async def run() -> None:
     while True:
         try:
             await bot.delete_webhook(drop_pending_updates=False)
+            await bot.delete_my_commands()
+            await bot.set_my_commands(
+                [
+                    BotCommand(command="start", description="Botni ishga tushirish"),
+                    BotCommand(command="help", description="Yordam"),
+                ]
+            )
             log.info("Bot polling started")
             await dispatcher.start_polling(bot)
             break

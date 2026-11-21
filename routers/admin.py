@@ -260,7 +260,12 @@ async def on_admin_callback(
         await on_admin_callback(callback, bot, settings, inbox_store)
 
 
-@router.message(F.chat.type == "private", F.text, ~F.text.startswith("/"))
+@router.message(
+    F.chat.type == "private",
+    F.text,
+    ~F.text.startswith("/"),
+    F.from_user.id.func(lambda uid: bool(uid and uid in _ADMIN_SESSIONS)),
+)
 async def handle_admin_session_input(
     message: Message,
     bot: Bot,

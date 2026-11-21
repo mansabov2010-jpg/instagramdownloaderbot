@@ -10,49 +10,45 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from config import Settings
 from services.cooldown import CooldownManager
 from services.inbox_store import InboxStore
-from services.parsing import is_probable_youtube_url, parse_user_input
 from services.request_store import RequestStore
 from services.telegram_uploads import upload_artifact
 from services.ytdlp import (
-    build_direct_options,
-    build_quick_youtube_options,
     build_ytdlp_options,
     download_selected_format,
     probe_url,
 )
-from utils import text
-from utils.keyboards import format_keyboard
 from utils.logging_config import safe_url_label
-from utils.models import DownloadOption, ParsedInput, StoredRequest
+from utils.models import DownloadOption, ParsedInput
 
 router = Router(name="intake")
 logger = logging.getLogger(__name__)
 
 _URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
-_INSTAGRAM_RE = re.compile(r"(https?://)?(www\.)?(instagram\.com|instagr\.am)/\S+", re.IGNORECASE)
+_MEDIA_HOST_RE = re.compile(
+    r"(https?://)?(www\.|vm\.|vt\.|m\.)?(instagram\.com|instagr\.am|tiktok\.com|youtube\.com|youtu\.be)/\S+",
+    re.IGNORECASE,
+)
 
 
-def _find_url(raw_text: str) -> str | None:
+def _extract_media_url(raw_text: str) -> str | None:
     m = _URL_RE.search(raw_text or "")
     if m:
-        return m.group(0).rstrip(").,]>\"'")
-    m_ig = _INSTAGRAM_RE.search(raw_text or "")
-    if m_ig:
-        u = m_ig.group(0).rstrip(").,]>\"'")
-        return u if u.startswith("http") else f"https://{u}"
+        url = m.group(0).rstrip(").,]>\"'")
+        if _MEDIA_HOST_RE.search(url):
+            return url
+    m2 = _MEDIA_HOST_RE.search(raw_text or "")
+    if m2:
+        url = m2.group(0).rstrip(").,]>\"'")
+        return url if url.startswith("http") else f"https://{url}"
     return None
 
 
-def _is_instagram_url(url: str) -> bool:
-    return bool(_INSTAGRAM_RE.search(url or ""))
-
-
-def _pick_clean_video_option(options: list[DownloadOption]) -> DownloadOption:
+def _pick_video_option(options: list[DownloadOption]) -> DownloadOption:
     for opt in options:
         if opt.send_type == "video" and opt.format_id:
             return opt
     return DownloadOption(
-        option_id="ig_clean_video",
+        option_id="best_video",
         label="Video",
         send_type="video",
         mode="ytdlp_format",
@@ -78,7 +74,7 @@ async def _check_force_subscriptions(bot: Bot, inbox_store: InboxStore, user_id:
     return missing
 
 
-@router.message(F.chat.type.in_({"private", "group", "supergroup"}), F.text, ~F.text.startswith("/"))
+@router.message(F.text)
 async def intake_message(
     message: Message,
     bot: Bot,
@@ -88,11 +84,11 @@ async def intake_message(
     inbox_store: InboxStore,
 ) -> None:
     raw_text = (message.text or "").strip()
-    if not message.from_user:
+    if not raw_text or raw_text.startswith("/") or not message.from_user:
         return
 
-    found_url = _find_url(raw_text)
-    if not found_url:
+    url = _extract_media_url(raw_text)
+    if not url:
         return
 
     is_admin = message.from_user.id in set(settings.auth_users or ())
@@ -106,114 +102,54 @@ async def intake_message(
             kb = InlineKeyboardMarkup(inline_keyboard=rows)
             await message.reply(
                 "✨ <b>Botdan foydalanish uchun quyidagi kanal yoki guruhga obuna bo‘ling!</b>\n\n"
-                "Obuna bo‘lganingizdan so‘ng havolani qayta yuboring — men darhol ishlayman. "
-                "Agar obunadan chiqib ketsangiz, yana obuna so‘raladi.",
+                "Obuna bo‘lganingizdan so‘ng havolani qayta yuboring — men darhol ishlayman.",
                 reply_markup=kb,
             )
             return
 
-    try:
-        parsed = parse_user_input(raw_text, message.entities)
-        if not parsed.source_url:
-            parsed = ParsedInput(source_url=found_url)
-    except Exception:
-        parsed = ParsedInput(source_url=found_url)
-
-    is_group = message.chat.type in ("group", "supergroup")
-    if is_group and not _is_instagram_url(parsed.source_url):
-        return
-
-    logger.info(
-        "Incoming link | user=%s chat=%s type=%s source=%s",
-        message.from_user.id,
-        message.chat.id,
-        message.chat.type,
-        safe_url_label(parsed.source_url),
-    )
-
     blocked_seconds = cooldown.check(message.from_user.id, settings.auth_users)
     if blocked_seconds:
         minutes = max(1, round(blocked_seconds / 60))
-        rate_tpl = getattr(text, "RATE_LIMIT", "Iltimos, {minutes} daqiqa kuting.")
-        await message.answer(rate_tpl.format(minutes=minutes))
+        await message.answer(f"⏳ Iltimos, {minutes} daqiqa kuting.")
         return
+
+    logger.info(
+        "Media link | user=%s chat=%s source=%s",
+        message.from_user.id,
+        message.chat.id,
+        safe_url_label(url),
+    )
 
     started_at = datetime.now()
-    processing_txt = getattr(text, "PROCESSING", "⏳ Yuklanmoqda...")
-    status_message = await message.reply(processing_txt)
+    status_msg = await message.reply("⏳ Video yuklanmoqda...")
 
-    if _is_instagram_url(parsed.source_url):
-        try:
-            info = await probe_url(parsed, settings)
-        except Exception as exc:
-            logger.warning("Instagram probe failed: %s", exc)
-            info = {}
-
-        options = build_ytdlp_options(info) if info else []
-        chosen = _pick_clean_video_option(options)
-        work_dir = settings.work_dir / f"ig_{message.chat.id}_{message.message_id}"
-
-        try:
-            artifact = await download_selected_format(
-                parsed_input=parsed,
-                option=chosen,
-                info=info or {},
-                settings=settings,
-                work_dir=work_dir,
-            )
-            await upload_artifact(
-                bot=bot,
-                status_message=status_message,
-                source_message=message,
-                artifact=artifact,
-                thumbnail_path=None,
-                started_at=started_at,
-            )
-        except Exception as exc:
-            logger.warning("Instagram download failed | chat=%s err=%s", message.chat.id, exc)
-            await status_message.edit_text(f"❌ Video yuklanmadi: {exc}")
-        return
-
-    if is_probable_youtube_url(parsed.source_url):
-        token = request_store.create_token()
-        stored = StoredRequest(
-            token=token,
-            request_type="youtube_quick",
-            parsed_input=parsed,
-            options=build_quick_youtube_options(),
-        )
-        request_store.save(stored)
-        await status_message.edit_text(
-            getattr(text, "QUICK_CHOICE", "Formatni tanlang:"),
-            reply_markup=format_keyboard(token, stored.options),
-        )
-        return
-
+    parsed = ParsedInput(source_url=url)
     try:
         info = await probe_url(parsed, settings)
-    except Exception:
-        info = None
+    except Exception as exc:
+        logger.warning("Probe error (%s): %s", safe_url_label(url), exc)
+        info = {}
 
-    token = request_store.create_token()
-    if info:
-        options = build_ytdlp_options(info)
-        request_type = "ytdlp_selection"
-        if not options:
-            options = build_direct_options(parsed, info=info)
-            request_type = "direct_download"
-    else:
-        options = build_direct_options(parsed, info=None)
-        request_type = "direct_download"
+    options = build_ytdlp_options(info) if info else []
+    chosen = _pick_video_option(options)
+    work_dir = settings.work_dir / f"dl_{message.chat.id}_{message.message_id}"
 
-    stored = StoredRequest(
-        token=token,
-        request_type=request_type,
-        parsed_input=parsed,
-        options=options,
-        info=info or {},
-    )
-    request_store.save(stored)
-    await status_message.edit_text(
-        getattr(text, "FORMAT_SELECTION", "Formatni tanlang:"),
-        reply_markup=format_keyboard(token, options),
-    )
+    try:
+        artifact = await download_selected_format(
+            parsed_input=parsed,
+            option=chosen,
+            info=info or {},
+            settings=settings,
+            work_dir=work_dir,
+        )
+        await upload_artifact(
+            bot=bot,
+            status_message=status_msg,
+            source_message=message,
+            artifact=artifact,
+            thumbnail_path=None,
+            started_at=started_at,
+        )
+    except Exception as exc:
+        logger.warning("Download/upload error (%s): %s", safe_url_label(url), exc)
+        await status_msg.edit_text(f"❌ Yuklab bo‘lmadi: {exc}")

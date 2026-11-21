@@ -32,6 +32,7 @@ class InboxStore:
                     chat_type TEXT NOT NULL,
                     title TEXT NOT NULL,
                     username TEXT DEFAULT '',
+                    member_count INTEGER DEFAULT 0,
                     last_message TEXT DEFAULT '',
                     updated_at TEXT NOT NULL
                 )
@@ -79,7 +80,7 @@ class InboxStore:
             conn.commit()
 
     def _ensure_columns(self, conn: sqlite3.Connection) -> None:
-        cols = {row["name"] for row in conn.execute("PRAGMA table_info(messages)").fetchall()}
+        msg_cols = {row["name"] for row in conn.execute("PRAGMA table_info(messages)").fetchall()}
         additions = {
             "tg_message_id": "INTEGER",
             "reply_to_tg_id": "INTEGER",
@@ -87,8 +88,22 @@ class InboxStore:
             "reply_to_text": "TEXT DEFAULT ''",
         }
         for col, col_type in additions.items():
-            if col not in cols:
+            if col not in msg_cols:
                 conn.execute(f"ALTER TABLE messages ADD COLUMN {col} {col_type}")
+
+        chat_cols = {row["name"] for row in conn.execute("PRAGMA table_info(chats)").fetchall()}
+        if "member_count" not in chat_cols:
+            conn.execute("ALTER TABLE chats ADD COLUMN member_count INTEGER DEFAULT 0")
+
+    def set_chat_member_count(self, chat_id: int, count: int) -> None:
+        if count < 0:
+            return
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                "UPDATE chats SET member_count = ? WHERE chat_id = ?",
+                (int(count), int(chat_id)),
+            )
+            conn.commit()
 
     def record_incoming(
         self,
@@ -103,6 +118,7 @@ class InboxStore:
         tg_message_id: int | None = None,
         reply_to_tg_id: int | None = None,
         save_contact: bool = False,
+        member_count: int | None = None,
     ) -> None:
         now = _now_iso()
         clean_title = (chat_title or "Noma'lum chat").strip()
@@ -110,20 +126,22 @@ class InboxStore:
         u_name = (full_name or "Foydalanuvchi").strip()
         u_user = (user_username or "").lstrip("@")
         preview = (text or "[Media / Fayl]").strip()
+        cnt = int(member_count) if member_count is not None and member_count >= 0 else 0
 
         with self._lock, self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO chats (chat_id, chat_type, title, username, last_message, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO chats (chat_id, chat_type, title, username, member_count, last_message, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(chat_id) DO UPDATE SET
                     chat_type = excluded.chat_type,
                     title = CASE WHEN excluded.title != '' THEN excluded.title ELSE chats.title END,
                     username = CASE WHEN excluded.username != '' THEN excluded.username ELSE chats.username END,
+                    member_count = CASE WHEN excluded.member_count > 0 THEN excluded.member_count ELSE chats.member_count END,
                     last_message = excluded.last_message,
                     updated_at = excluded.updated_at
                 """,
-                (chat_id, chat_type, clean_title, c_user, preview[:160], now),
+                (chat_id, chat_type, clean_title, c_user, cnt, preview[:160], now),
             )
 
             if save_contact and chat_type == "private" and user_id:
@@ -275,6 +293,28 @@ class InboxStore:
             ).fetchall()
             return [dict(r) for r in rows]
 
+    def get_stats_summary(self) -> dict:
+        with self._lock, self._connect() as conn:
+            contact_count = conn.execute("SELECT COUNT(*) AS c FROM contacts").fetchone()["c"]
+            private_chats = conn.execute(
+                "SELECT COUNT(*) AS c FROM chats WHERE chat_type = 'private'"
+            ).fetchone()["c"]
+            groups = [
+                dict(r)
+                for r in conn.execute(
+                    "SELECT * FROM chats WHERE chat_type != 'private' ORDER BY member_count DESC, updated_at DESC"
+                ).fetchall()
+            ]
+            total_group_members = sum(int(g.get("member_count") or 0) for g in groups)
+            return {
+                "users_count": max(int(contact_count), int(private_chats)),
+                "contacts_count": int(contact_count),
+                "private_chats_count": int(private_chats),
+                "groups_count": len(groups),
+                "total_group_members": int(total_group_members),
+                "groups": groups,
+            }
+
     def get_broadcast_targets(self, include_contacts: bool = True, include_groups: bool = True) -> list[int]:
         ids: set[int] = set()
         with self._lock, self._connect() as conn:
@@ -335,6 +375,7 @@ class InboxStore:
         chats = self.get_chats(kind if kind in ("private", "groups") else "private")
         contacts = self.get_contacts()
         force_subs = self.list_force_subs()
+        stats = self.get_stats_summary()
         active_id = chat_id
         if kind == "contacts":
             if active_id is not None:
@@ -356,6 +397,7 @@ class InboxStore:
                 "chats": chats,
                 "contacts": contacts,
                 "force_subs": force_subs,
+                "stats": stats,
                 "messages": messages,
             },
             ensure_ascii=False,

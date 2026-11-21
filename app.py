@@ -10,6 +10,7 @@ from aiogram.types import ChatMemberUpdated, Message, TelegramObject
 
 from config import Settings
 from utils.logging_config import setup_logging
+from routers.admin import router as admin_router
 from routers.callbacks import router as callbacks_router
 from routers.commands import router as commands_router
 from routers.intake import router as intake_router
@@ -63,6 +64,16 @@ class InboxLoggingMiddleware(BaseMiddleware):
 
             reply_id = event.reply_to_message.message_id if event.reply_to_message else None
 
+            member_cnt: int | None = None
+            bot_obj: Bot | None = data.get("bot")
+            if chat_type != "private" and bot_obj is not None:
+                try:
+                    c = await bot_obj.get_chat_member_count(chat.id)
+                    if isinstance(c, int) and c > 0:
+                        member_cnt = c
+                except Exception:
+                    member_cnt = None
+
             self.inbox_store.record_incoming(
                 chat_id=chat.id,
                 chat_type=chat_type,
@@ -75,6 +86,7 @@ class InboxLoggingMiddleware(BaseMiddleware):
                 tg_message_id=event.message_id,
                 reply_to_tg_id=reply_id,
                 save_contact=(chat_type == "private"),
+                member_count=member_cnt,
             )
 
         return await handler(event, data)
@@ -84,12 +96,21 @@ def _build_chat_member_router(inbox_store: InboxStore) -> Router:
     member_router = Router(name="inbox_members")
 
     @member_router.my_chat_member()
-    async def on_my_chat_member(update: ChatMemberUpdated) -> None:
+    async def on_my_chat_member(update: ChatMemberUpdated, bot: Bot) -> None:
         chat = update.chat
         actor = update.from_user
         chat_type = chat.type or "group"
         title = chat.title or f"Chat {chat.id}"
         status_text = f"[Bot holati: {update.new_chat_member.status}]"
+        member_cnt: int | None = None
+        if chat_type != "private":
+            try:
+                c = await bot.get_chat_member_count(chat.id)
+                if isinstance(c, int) and c > 0:
+                    member_cnt = c
+            except Exception:
+                member_cnt = None
+
         inbox_store.record_incoming(
             chat_id=chat.id,
             chat_type=chat_type,
@@ -100,6 +121,7 @@ def _build_chat_member_router(inbox_store: InboxStore) -> Router:
             user_username=actor.username if actor else "",
             text=status_text,
             save_contact=False,
+            member_count=member_cnt,
         )
 
     return member_router
@@ -110,6 +132,7 @@ def create_dispatcher(settings: Settings, inbox_store: InboxStore | None = None)
     dispatcher = Dispatcher()
     dispatcher.message.middleware(InboxLoggingMiddleware(store))
     dispatcher.include_router(_build_chat_member_router(store))
+    dispatcher.include_router(admin_router)
     dispatcher.include_router(commands_router)
     dispatcher.include_router(thumbnails_router)
     dispatcher.include_router(intake_router)

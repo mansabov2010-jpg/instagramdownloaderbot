@@ -316,8 +316,22 @@ async def download_selected_format(
                 parsed_input.source_url,
             ]
         )
-       send_type = option.send_type
+        send_type = option.send_type
 
     logger.info(
         "Starting yt-dlp format download | source=%s mode=%s format=%s send_type=%s work_dir=%s",
+    )
+    await _run_command(command, cwd=work_dir)
+    file_path = _pick_downloaded_file(work_dir)
+    logger.info(
+        "yt-dlp format download complete | file=%s bytes=%s send_type=%s",
+        file_path.name,
+        file_path.stat().st_size,
+        send_type,
+    )
+    return DownloadArtifact(
+        path=file_path,
+        file_name=file_path.name,
+        send_type=send_type,
+        caption=_caption_from_info(info, file_path.stem),
     )

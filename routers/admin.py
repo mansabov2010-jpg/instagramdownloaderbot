@@ -6,6 +6,7 @@ import os
 import re
 
 from aiogram import Bot, F, Router
+from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.filters import Command
 from aiogram.types import (
     CallbackQuery,
@@ -281,11 +282,11 @@ async def handle_admin_session_input(
     inbox_store: InboxStore,
 ) -> None:
     if not message.from_user or not _is_admin(message.from_user.id, settings):
-        return
+        raise SkipHandler
     uid = message.from_user.id
     session = _ADMIN_SESSIONS.get(uid)
     if not session:
-        return
+        raise SkipHandler
 
     mode = session.get("mode")
     txt = (message.text or "").strip()

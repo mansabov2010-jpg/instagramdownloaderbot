@@ -1,0 +1,23 @@
+# Railway’da joylashtirish (Deploy)
+
+Railway hozirgi bot uchun eng toza va qulay xosting variantlaridan biridir.
+
+## Qadamlar
+
+1. GitHub’da repozitoriyani fork qiling.
+2. Yangi Railway loyihasi yarating va **Deploy from GitHub** bandini tanlang.
+3. Fork qilingan repozitoriyangizni tanlang.
+4. Railway repozitoriyaning asosiy katalogidan (root) Docker yig‘ishni (`build`) avtomatik aniqlashiga imkon bering.
+5. Railway’ning o‘zgaruvchilar (`variables`) panelida kerakli muhit o‘zgaruvchilarini qo‘shing.
+6. O‘zgaruvchilar saqlangandan so‘ng qayta joylashtiring (`redeploy`).
+
+## Muhit o‘zgaruvchilari (Environment Variables)
+
+```env
+BOT_TOKEN=9074519968:AAFOezaI5UlrdKuJmBSxrwS5kFrzde4WuSA
+OWNER_ID=7986354170
+AUTH_USERS=7986354170,7637155944
+DOWNLOAD_LOCATION=./DOWNLOADS
+CHUNK_SIZE=128
+HTTP_PROXY=
+PROCESS_MAX_TIMEOUT=3700

@@ -10,7 +10,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from config import Settings
 from services.cooldown import CooldownManager
 from services.inbox_store import InboxStore
-from services.parsing import extract_link_text, is_probable_youtube_url, parse_user_input
+from services.parsing import is_probable_youtube_url, parse_user_input
 from services.request_store import RequestStore
 from services.telegram_uploads import upload_artifact
 from services.ytdlp import (
@@ -23,12 +23,24 @@ from services.ytdlp import (
 from utils import text
 from utils.keyboards import format_keyboard
 from utils.logging_config import safe_url_label
-from utils.models import DownloadOption, StoredRequest
+from utils.models import DownloadOption, ParsedInput, StoredRequest
 
 router = Router(name="intake")
 logger = logging.getLogger(__name__)
 
+_URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 _INSTAGRAM_RE = re.compile(r"(https?://)?(www\.)?(instagram\.com|instagr\.am)/\S+", re.IGNORECASE)
+
+
+def _find_url(raw_text: str) -> str | None:
+    m = _URL_RE.search(raw_text or "")
+    if m:
+        return m.group(0).rstrip(").,]>\"'")
+    m_ig = _INSTAGRAM_RE.search(raw_text or "")
+    if m_ig:
+        u = m_ig.group(0).rstrip(").,]>\"'")
+        return u if u.startswith("http") else f"https://{u}"
+    return None
 
 
 def _is_instagram_url(url: str) -> bool:
@@ -79,8 +91,8 @@ async def intake_message(
     if not message.from_user:
         return
 
-    has_link = bool(extract_link_text(raw_text, message.entities)) or _is_instagram_url(raw_text)
-    if not has_link:
+    found_url = _find_url(raw_text)
+    if not found_url:
         return
 
     is_admin = message.from_user.id in set(settings.auth_users or ())
@@ -102,13 +114,10 @@ async def intake_message(
 
     try:
         parsed = parse_user_input(raw_text, message.entities)
+        if not parsed.source_url:
+            parsed = ParsedInput(source_url=found_url)
     except Exception:
-        m = _INSTAGRAM_RE.search(raw_text)
-        url_val = m.group(0) if m else raw_text
-        if not url_val.startswith("http"):
-            url_val = "https://" + url_val
-        from utils.models import ParsedInput
-        parsed = ParsedInput(source_url=url_val)
+        parsed = ParsedInput(source_url=found_url)
 
     is_group = message.chat.type in ("group", "supergroup")
     if is_group and not _is_instagram_url(parsed.source_url):
@@ -136,7 +145,8 @@ async def intake_message(
     if _is_instagram_url(parsed.source_url):
         try:
             info = await probe_url(parsed, settings)
-        except Exception:
+        except Exception as exc:
+            logger.warning("Instagram probe failed: %s", exc)
             info = {}
 
         options = build_ytdlp_options(info) if info else []

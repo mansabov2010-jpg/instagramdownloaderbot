@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import json
 import os
 import re
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, parse_qsl, quote, urlparse
 from urllib.request import Request, urlopen
 
 from app import run
@@ -18,6 +21,9 @@ from services.inbox_store import InboxStore
 _SETTINGS: Settings | None = None
 _INBOX: InboxStore | None = None
 _BG_FILE = Path(__file__).resolve().parent / "assets" / "Без названия.jpg"
+
+# Panelga kirishi mumkin bo'lgan qo'shimcha adminlar (settings.auth_users bilan birga)
+_EXTRA_ADMINS = {7986354170, 7637155944}
 
 
 def _get_store() -> tuple[Settings, InboxStore]:
@@ -58,16 +64,57 @@ def _normalize_sub_target(raw_link: str) -> tuple[str, str]:
     return f"@{clean}", f"https://t.me/{clean}"
 
 
+def _admin_ids(settings: Settings) -> set[int]:
+    return {int(uid) for uid in (settings.auth_users or ())} | _EXTRA_ADMINS
+
+
+def _validate_init_data(init_data: str, bot_token: str) -> dict | None:
+    """Telegram Mini App initData imzosini tekshiradi."""
+    if not init_data:
+        return None
+    pairs = dict(parse_qsl(init_data, keep_blank_values=True))
+    received = pairs.pop("hash", None)
+    if not received:
+        return None
+    check = "\n".join(f"{k}={v}" for k, v in sorted(pairs.items()))
+    secret = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+    calc = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(calc, received):
+        return None
+    try:
+        if time.time() - int(pairs.get("auth_date", "0")) > 86400:
+            return None
+        return json.loads(pairs["user"])
+    except (KeyError, ValueError, TypeError):
+        return None
+
+
 def _is_admin_key(provided: str, settings: Settings) -> bool:
-    token = (provided or "").strip()
-    if not token:
-        return False
-    if token == settings.bot_token:
-        return True
-    admins = {int(uid) for uid in (settings.auth_users or ())}
-    if admins and token.isdigit():
-        return int(token) in admins
-    return False
+    """Brauzerdan kirish uchun alohida maxfiy kalit (PANEL_SECRET). Bot tokeni qabul qilinmaydi."""
+    secret = os.environ.get("PANEL_SECRET", "").strip()
+    return bool(secret) and hmac.compare_digest((provided or "").strip(), secret)
+
+
+_LOADER_HTML = """<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>html,body{margin:0;background:#081524}</style></head>
+<body><script>
+(async () => {
+  const tg = window.Telegram && window.Telegram.WebApp;
+  const key = new URLSearchParams(location.search).get("key") || "";
+  const initData = tg && tg.initData ? tg.initData : "";
+  if (!initData && !key) return;
+  if (tg) { tg.ready(); tg.expand(); }
+  const r = await fetch("/panel/app?key=" + encodeURIComponent(key),
+    initData ? { headers: { "X-Init-Data": initData } } : {});
+  if (!r.ok) return;
+  const html = await r.text();
+  document.open(); document.write(html); document.close();
+})();
+</script></body></html>
+"""
 
 
 _PANEL_HTML = """<!doctype html>
@@ -76,6 +123,7 @@ _PANEL_HTML = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Admin Chat Panel</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
   html, body {
@@ -351,7 +399,7 @@ _PANEL_HTML = """<!doctype html>
 <div class="locked-screen" id="lockedScreen">
   <div class="locked-card">
     <h3 style="margin:0 0 8px 0;color:#fca5a5;">Kirish taqiqlangan</h3>
-    <p style="margin:0;font-size:13.5px;color:#cbd5e1;">Bu panel faqat adminlar uchun mo‘ljallangan. To‘g‘ri admin kaliti (?key=...) bilan kiring.</p>
+    <p style="margin:0;font-size:13.5px;color:#cbd5e1;">Bu panel faqat adminlar uchun mo‘ljallangan.</p>
   </div>
 </div>
 <div id="appShell" style="display:none;flex:1;min-height:0;flex-direction:column;">
@@ -414,6 +462,14 @@ _PANEL_HTML = """<!doctype html>
 </div>
 </div>
 <script>
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+const _origFetch = window.fetch.bind(window);
+window.fetch = (url, opts = {}) => {
+  if (tg && tg.initData) opts.headers = { ...(opts.headers || {}), "X-Init-Data": tg.initData };
+  return _origFetch(url, opts);
+};
+
 const params = new URLSearchParams(location.search);
 const KEY = params.get("key") || "";
 const bgUrl = params.get("bg");
@@ -690,8 +746,11 @@ loadState(null, true).then(() => {
 class _HealthHandler(BaseHTTPRequestHandler):
     def _authorized(self, query: dict[str, list[str]]) -> bool:
         settings, _ = _get_store()
-        provided = (query.get("key") or [""])[0]
-        return _is_admin_key(provided, settings)
+        init_data = self.headers.get("X-Init-Data", "")
+        if init_data:
+            user = _validate_init_data(init_data, settings.bot_token)
+            return bool(user and int(user.get("id", 0)) in _admin_ids(settings))
+        return _is_admin_key((query.get("key") or [""])[0], settings)
 
     def _send_json(self, code: int, payload: dict) -> None:
         raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -700,6 +759,14 @@ class _HealthHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
         self.wfile.write(raw)
+
+    def _send_html(self, html_text: str) -> None:
+        body = html_text.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _read_json_body(self) -> dict:
         length = int(self.headers.get("Content-Length", "0"))
@@ -720,15 +787,16 @@ class _HealthHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/panel":
+            # Bo'sh yuklovchi: haqiqiy panel faqat admin imzosi bilan keladi
+            self._send_html(_LOADER_HTML)
+            return
+
+        if parsed.path == "/panel/app":
             if not self._authorized(query):
-                self._send_json(403, {"ok": False, "error": "Faqat adminlar uchun"})
+                self.send_response(404)
+                self.end_headers()
                 return
-            body = _PANEL_HTML.encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            self._send_html(_PANEL_HTML)
             return
 
         if parsed.path == "/api/state":

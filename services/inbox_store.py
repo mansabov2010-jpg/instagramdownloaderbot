@@ -64,6 +64,17 @@ class InboxStore:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS force_subs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    target TEXT NOT NULL UNIQUE,
+                    title TEXT DEFAULT '',
+                    invite_url TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
             self._ensure_columns(conn)
             conn.commit()
 
@@ -115,7 +126,6 @@ class InboxStore:
                 (chat_id, chat_type, clean_title, c_user, preview[:160], now),
             )
 
-            # Faqat lichkada yozgan foydalanuvchilar kontaktda saqlanadi
             if save_contact and chat_type == "private" and user_id:
                 conn.execute(
                     """
@@ -254,7 +264,7 @@ class InboxStore:
                 ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT * FROM chats WHERE chat_type IN ('group', 'supergroup', 'channel') ORDER BY updated_at DESC"
+                    "SELECT * FROM chats WHERE chat_type != 'private' ORDER BY updated_at DESC"
                 ).fetchall()
             return [dict(r) for r in rows]
 
@@ -264,6 +274,22 @@ class InboxStore:
                 "SELECT * FROM contacts ORDER BY updated_at DESC"
             ).fetchall()
             return [dict(r) for r in rows]
+
+    def get_broadcast_targets(self, include_contacts: bool = True, include_groups: bool = True) -> list[int]:
+        ids: set[int] = set()
+        with self._lock, self._connect() as conn:
+            if include_contacts:
+                for r in conn.execute("SELECT user_id FROM contacts").fetchall():
+                    if r["user_id"]:
+                        ids.add(int(r["user_id"]))
+                for r in conn.execute("SELECT chat_id FROM chats WHERE chat_type = 'private'").fetchall():
+                    if r["chat_id"]:
+                        ids.add(int(r["chat_id"]))
+            if include_groups:
+                for r in conn.execute("SELECT chat_id FROM chats WHERE chat_type != 'private'").fetchall():
+                    if r["chat_id"]:
+                        ids.add(int(r["chat_id"]))
+        return list(ids)
 
     def get_messages(self, chat_id: int, limit: int = 100) -> list[dict]:
         with self._lock, self._connect() as conn:
@@ -280,9 +306,35 @@ class InboxStore:
             items.reverse()
             return items
 
+    def list_force_subs(self) -> list[dict]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute("SELECT * FROM force_subs ORDER BY id ASC").fetchall()
+            return [dict(r) for r in rows]
+
+    def add_force_sub(self, target: str, title: str, invite_url: str) -> None:
+        now = _now_iso()
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO force_subs (target, title, invite_url, created_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(target) DO UPDATE SET
+                    title = CASE WHEN excluded.title != '' THEN excluded.title ELSE force_subs.title END,
+                    invite_url = excluded.invite_url
+                """,
+                (target.strip(), title.strip(), invite_url.strip(), now),
+            )
+            conn.commit()
+
+    def remove_force_sub(self, sub_id: int) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute("DELETE FROM force_subs WHERE id = ?", (sub_id,))
+            conn.commit()
+
     def export_state_json(self, kind: str = "private", chat_id: int | None = None) -> str:
         chats = self.get_chats(kind if kind in ("private", "groups") else "private")
         contacts = self.get_contacts()
+        force_subs = self.list_force_subs()
         active_id = chat_id
         if kind == "contacts":
             if active_id is not None:
@@ -303,6 +355,7 @@ class InboxStore:
                 "active_chat_id": active_id,
                 "chats": chats,
                 "contacts": contacts,
+                "force_subs": force_subs,
                 "messages": messages,
             },
             ensure_ascii=False,

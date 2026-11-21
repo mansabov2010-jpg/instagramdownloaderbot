@@ -66,7 +66,7 @@ async def _check_force_subscriptions(bot: Bot, inbox_store: InboxStore, user_id:
     return missing
 
 
-@router.message(F.chat.type.in_({"private", "group", "supergroup"}), F.text)
+@router.message(F.chat.type.in_({"private", "group", "supergroup"}), F.text, ~F.text.startswith("/"))
 async def intake_message(
     message: Message,
     bot: Bot,
@@ -75,11 +75,12 @@ async def intake_message(
     request_store: RequestStore,
     inbox_store: InboxStore,
 ) -> None:
-    raw_text = message.text or ""
-    if not extract_link_text(raw_text, message.entities):
+    raw_text = (message.text or "").strip()
+    if not message.from_user:
         return
 
-    if not message.from_user:
+    has_link = bool(extract_link_text(raw_text, message.entities)) or _is_instagram_url(raw_text)
+    if not has_link:
         return
 
     is_admin = message.from_user.id in set(settings.auth_users or ())
@@ -92,16 +93,24 @@ async def intake_message(
                 rows.append([InlineKeyboardButton(text=f"✨ {label} ga a'zo bo'lish", url=sub["invite_url"])])
             kb = InlineKeyboardMarkup(inline_keyboard=rows)
             await message.reply(
-                "✨ <b>Botdan to‘liq foydalanish uchun quyidagi kanal yoki guruhga obuna bo‘ling!</b>\n\n"
-                "Obuna bo‘lganingizdan so‘ng havolani qayta yuboring — men darhol tayyorlab beraman. "
-                "Agar obunadan chiqib ketsangiz, xizmat vaqtincha to‘xtatiladi.",
+                "✨ <b>Botdan foydalanish uchun quyidagi kanal yoki guruhga obuna bo‘ling!</b>\n\n"
+                "Obuna bo‘lganingizdan so‘ng havolani qayta yuboring — men darhol ishlayman. "
+                "Agar obunadan chiqib ketsangiz, yana obuna so‘raladi.",
                 reply_markup=kb,
             )
             return
 
-    parsed = parse_user_input(raw_text, message.entities)
-    is_group = message.chat.type in ("group", "supergroup")
+    try:
+        parsed = parse_user_input(raw_text, message.entities)
+    except Exception:
+        m = _INSTAGRAM_RE.search(raw_text)
+        url_val = m.group(0) if m else raw_text
+        if not url_val.startswith("http"):
+            url_val = "https://" + url_val
+        from utils.models import ParsedInput
+        parsed = ParsedInput(source_url=url_val)
 
+    is_group = message.chat.type in ("group", "supergroup")
     if is_group and not _is_instagram_url(parsed.source_url):
         return
 
@@ -116,17 +125,18 @@ async def intake_message(
     blocked_seconds = cooldown.check(message.from_user.id, settings.auth_users)
     if blocked_seconds:
         minutes = max(1, round(blocked_seconds / 60))
-        await message.answer(text.RATE_LIMIT.format(minutes=minutes))
+        rate_tpl = getattr(text, "RATE_LIMIT", "Iltimos, {minutes} daqiqa kuting.")
+        await message.answer(rate_tpl.format(minutes=minutes))
         return
 
     started_at = datetime.now()
-    status_message = await message.reply(text.PROCESSING)
+    processing_txt = getattr(text, "PROCESSING", "⏳ Yuklanmoqda...")
+    status_message = await message.reply(processing_txt)
 
-    # Instagram havolalari: format tanlamasdan, ovozli va toza video yuborish
     if _is_instagram_url(parsed.source_url):
         try:
             info = await probe_url(parsed, settings)
-        except RuntimeError:
+        except Exception:
             info = {}
 
         options = build_ytdlp_options(info) if info else []
@@ -151,7 +161,7 @@ async def intake_message(
             )
         except Exception as exc:
             logger.warning("Instagram download failed | chat=%s err=%s", message.chat.id, exc)
-            await status_message.edit_text(f"Video yuklanmadi: {exc}")
+            await status_message.edit_text(f"❌ Video yuklanmadi: {exc}")
         return
 
     if is_probable_youtube_url(parsed.source_url):
@@ -164,14 +174,14 @@ async def intake_message(
         )
         request_store.save(stored)
         await status_message.edit_text(
-            text.QUICK_CHOICE,
+            getattr(text, "QUICK_CHOICE", "Formatni tanlang:"),
             reply_markup=format_keyboard(token, stored.options),
         )
         return
 
     try:
         info = await probe_url(parsed, settings)
-    except RuntimeError:
+    except Exception:
         info = None
 
     token = request_store.create_token()
@@ -194,6 +204,6 @@ async def intake_message(
     )
     request_store.save(stored)
     await status_message.edit_text(
-        text.FORMAT_SELECTION,
+        getattr(text, "FORMAT_SELECTION", "Formatni tanlang:"),
         reply_markup=format_keyboard(token, options),
     )

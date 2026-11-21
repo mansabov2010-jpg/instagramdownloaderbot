@@ -1,0 +1,22 @@
+# Render’da joylashtirish (Deploy)
+
+Render ushbu repozitoriyaning Docker sozlamalari bilan eng yaxshi ishlaydi.
+
+## Qadamlar
+
+1. GitHub’da repozitoriyani fork qiling.
+2. Fork qilingan repozitoriyangiz asosida yangi Render **Web Service** yarating.
+3. Muhit (`environment`) sozlamasini **Docker** holatida qoldiring.
+4. Birinchi muvaffaqiyatli deploy oldidan kerakli muhit o‘zgaruvchilarini (`environment variables`) qo‘shing.
+5. Servisni repozitoriyaning asosiy katalogidan (root) joylashtiring.
+
+## Muhit o‘zgaruvchilari (Environment Variables)
+
+```env
+BOT_TOKEN=9074519968:AAFOezaI5UlrdKuJmBSxrwS5kFrzde4WuSA
+OWNER_ID=7986354170
+AUTH_USERS=7986354170,7637155944
+DOWNLOAD_LOCATION=./DOWNLOADS
+CHUNK_SIZE=128
+HTTP_PROXY=
+PROCESS_MAX_TIMEOUT=3700

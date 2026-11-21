@@ -1,0 +1,45 @@
+{
+  "name": "All Url Uploader",
+  "description": "To‘g‘ridan-to‘g‘ri URL manzillarini va qo‘llab-quvvatlanadigan yt-dlp medialarni yuklab oluvchi hamda natijani Telegramga yuboruvchi bot.",
+  "repository": "https://github.com/mansabov2010-jpg/instagramdownloaderbot",
+  "keywords": [
+    "telegram",
+    "bot",
+    "python",
+    "aiogram",
+    "yt-dlp",
+    "heroku"
+  ],
+  "stack": "container",
+  "env": {
+    "BOT_TOKEN": {
+      "description": "BotFather’dan olingan Telegram bot tokeni."
+    },
+    "OWNER_ID": {
+      "description": "Bot egasi va boshqaruvchisi bo‘lgan Telegram foydalanuvchi ID raqami."
+    },
+    "AUTH_USERS": {
+      "description": "Kutish vaqti (cooldown) cheklovidan o‘ta oladigan Telegram foydalanuvchi ID raqamlari ro‘yxati (ixtiyoriy).",
+      "required": false
+    },
+    "DOWNLOAD_LOCATION": {
+      "description": "Vaqtinchalik yuklamalar, yuboriladigan fayllar, so‘rovlar va muqovalar (thumbnails) uchun yozish mumkin bo‘lgan yo‘l.",
+      "required": false,
+      "value": "./DOWNLOADS"
+    },
+    "CHUNK_SIZE": {
+      "description": "To‘g‘ridan-to‘g‘ri yuklab olish bo‘lagi hajmi (ixtiyoriy); 1024 dan kichik qiymatlar kilobayt sifatida qabul qilinadi.",
+      "required": false,
+      "value": "128"
+    },
+    "HTTP_PROXY": {
+      "description": "Tarmoq so‘rovlari va yt-dlp uchun ishlatiladigan proksi URL manzili (ixtiyoriy).",
+      "required": false
+    },
+    "PROCESS_MAX_TIMEOUT": {
+      "description": "Tashqi vositalar jarayonlari uchun kutish vaqti soniyalarda (ixtiyoriy).",
+      "required": false,
+      "value": "3700"
+    }
+  }
+}

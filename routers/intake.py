@@ -12,11 +12,7 @@ from services.cooldown import CooldownManager
 from services.inbox_store import InboxStore
 from services.request_store import RequestStore
 from services.telegram_uploads import upload_artifact
-from services.ytdlp import (
-    build_ytdlp_options,
-    download_selected_format,
-    probe_url,
-)
+from services.ytdlp import download_selected_format, probe_url
 from utils.logging_config import safe_url_label
 from utils.models import DownloadOption, ParsedInput
 
@@ -41,20 +37,6 @@ def _extract_media_url(raw_text: str) -> str | None:
         url = m2.group(0).rstrip(").,]>\"'")
         return url if url.startswith("http") else f"https://{url}"
     return None
-
-
-def _pick_video_option(options: list[DownloadOption]) -> DownloadOption:
-    for opt in options:
-        if opt.send_type == "video" and opt.format_id:
-            return opt
-    return DownloadOption(
-        option_id="best_video",
-        label="Video",
-        send_type="video",
-        mode="ytdlp_format",
-        format_id="bestvideo*+bestaudio/best",
-        file_ext="mp4",
-    )
 
 
 async def _check_force_subscriptions(bot: Bot, inbox_store: InboxStore, user_id: int) -> list[dict]:
@@ -114,7 +96,7 @@ async def intake_message(
         return
 
     logger.info(
-        "Media link | user=%s chat=%s source=%s",
+        "Media link received | user=%s chat=%s source=%s",
         message.from_user.id,
         message.chat.id,
         safe_url_label(url),
@@ -126,12 +108,17 @@ async def intake_message(
     parsed = ParsedInput(source_url=url)
     try:
         info = await probe_url(parsed, settings)
-    except Exception as exc:
-        logger.warning("Probe error (%s): %s", safe_url_label(url), exc)
+    except Exception:
         info = {}
 
-    options = build_ytdlp_options(info) if info else []
-    chosen = _pick_video_option(options)
+    chosen = DownloadOption(
+        option_id="best_video",
+        label="Video",
+        send_type="video",
+        mode="ytdlp_format",
+        format_id="best[ext=mp4]/best",
+        file_ext="mp4",
+    )
     work_dir = settings.work_dir / f"dl_{message.chat.id}_{message.message_id}"
 
     try:
@@ -151,5 +138,5 @@ async def intake_message(
             started_at=started_at,
         )
     except Exception as exc:
-        logger.warning("Download/upload error (%s): %s", safe_url_label(url), exc)
+        logger.warning("Download/upload failed (%s): %s", safe_url_label(url), exc)
         await status_msg.edit_text(f"❌ Yuklab bo‘lmadi: {exc}")

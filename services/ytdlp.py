@@ -19,7 +19,6 @@ AUDIO_EXTENSIONS = {"mp3", "m4a", "aac", "wav", "flac", "opus", "weba"}
 logger = logging.getLogger(__name__)
 _COOKIE_FILE_PATH: Path | None = None
 
-# Bir vaqtda nechta yt-dlp ishlashi mumkin (Render'ning kuchsiz CPU/RAM uchun)
 _MAX_PARALLEL_DOWNLOADS = 2
 _DOWNLOAD_SEM: asyncio.Semaphore | None = None
 
@@ -65,12 +64,10 @@ def _command_base(parsed_input: ParsedInput, settings: Settings) -> list[str]:
         "yt-dlp",
         "--no-warnings",
         "--no-playlist",
-        # Qotib qolmaslik uchun vaqt chegaralari va qayta urinishlar
         "--socket-timeout", "20",
         "--retries", "3",
         "--fragment-retries", "3",
         "--extractor-retries", "2",
-        # Bo'lakli (HLS/DASH) videolarni parallel yuklash
         "--concurrent-fragments", "4",
         "--no-mtime",
     ]
@@ -99,7 +96,6 @@ async def _run_command(command: list[str], cwd: Path | None = None) -> tuple[str
     try:
         stdout, stderr = await process.communicate()
     except asyncio.CancelledError:
-        # Vaqt tugasa yoki bekor qilinsa, yt-dlp jarayonini ham o'chiramiz
         try:
             process.kill()
         except ProcessLookupError:
@@ -157,8 +153,7 @@ async def probe_url(parsed_input: ParsedInput, settings: Settings) -> dict:
     stdout, _ = await _run_command(command)
     if "\n" in stdout:
         stdout = stdout.splitlines()[0]
-    payload = json.loads(stdout)
-    return payload
+    return json.loads(stdout)
 
 
 def build_quick_youtube_options() -> list[DownloadOption]:
@@ -294,7 +289,6 @@ def _caption_from_info(info: dict, fallback: str) -> str:
 
 
 def _read_info_json(work_dir: Path) -> dict:
-    """--write-info-json bilan yozilgan fayldan sarlavha va havolani o'qiydi."""
     for path in work_dir.rglob("*.info.json"):
         try:
             data = json.loads(path.read_text(encoding="utf-8", errors="ignore"))
@@ -302,6 +296,59 @@ def _read_info_json(work_dir: Path) -> dict:
             continue
         return {"title": data.get("title"), "webpage_url": data.get("webpage_url")}
     return {}
+
+
+def _build_video_selector(raw_format: str | None) -> str:
+    fmt = (raw_format or "").strip()
+    if not fmt:
+        return "bestvideo*+bestaudio/best[ext=mp4]/best"
+    if "+" in fmt:
+        return f"{fmt}/bestvideo*+bestaudio/best[ext=mp4]/best"
+    return f"{fmt}+bestaudio/{fmt}/bestvideo*+bestaudio/best[ext=mp4]/best"
+
+
+async def _run_video_with_audio_fallback(
+    parsed_input: ParsedInput,
+    settings: Settings,
+    work_dir: Path,
+    format_selector: str,
+    output_template: str,
+    write_info_json: bool = False,
+) -> None:
+    cmd_aac = _command_base(parsed_input, settings)
+    cmd_aac.extend(
+        [
+            "-f",
+            format_selector,
+            "--merge-output-format",
+            "mp4",
+            "--postprocessor-args",
+            "ffmpeg:-c:v copy -c:a aac",
+        ]
+    )
+    if write_info_json:
+        cmd_aac.append("--write-info-json")
+    cmd_aac.extend(["-o", output_template, parsed_input.source_url])
+
+    try:
+        await _run_command(cmd_aac, cwd=work_dir)
+        return
+    except Exception as exc:
+        logger.info("AAC postprocess retry without custom args | reason=%s", exc)
+
+    cmd_merge = _command_base(parsed_input, settings)
+    cmd_merge.extend(
+        [
+            "-f",
+            format_selector,
+            "--merge-output-format",
+            "mp4",
+        ]
+    )
+    if write_info_json:
+        cmd_merge.append("--write-info-json")
+    cmd_merge.extend(["-o", output_template, parsed_input.source_url])
+    await _run_command(cmd_merge, cwd=work_dir)
 
 
 async def download_quick_youtube(
@@ -313,37 +360,37 @@ async def download_quick_youtube(
     info = await probe_url(parsed_input, settings)
     work_dir = work_dir.resolve()
     work_dir.mkdir(parents=True, exist_ok=True)
-    command = _command_base(parsed_input, settings)
     output_template = str(work_dir / "%(title)s [%(id)s].%(ext)s")
 
-    if option.option_id == "quick_audio":
-        command.extend(
-            [
-                "-f",
-                "bestaudio",
-                "--extract-audio",
-                "--audio-format",
-                "mp3",
-                "-o",
-                output_template,
-                parsed_input.source_url,
-            ]
-        )
-        send_type = "audio"
-    else:
-        command.extend(
-            [
-                "-f",
-                "best[ext=mp4]/best",
-                "-o",
-                output_template,
-                parsed_input.source_url,
-            ]
-        )
-        send_type = "video"
-
     async with _download_sem():
-        await _run_command(command, cwd=work_dir)
+        if option.option_id == "quick_audio":
+            command = _command_base(parsed_input, settings)
+            command.extend(
+                [
+                    "-f",
+                    "bestaudio/best",
+                    "--extract-audio",
+                    "--audio-format",
+                    "mp3",
+                    "-o",
+                    output_template,
+                    parsed_input.source_url,
+                ]
+            )
+            await _run_command(command, cwd=work_dir)
+            send_type = "audio"
+        else:
+            selector = "bestvideo*+bestaudio/best[ext=mp4]/best"
+            await _run_video_with_audio_fallback(
+                parsed_input=parsed_input,
+                settings=settings,
+                work_dir=work_dir,
+                format_selector=selector,
+                output_template=output_template,
+                write_info_json=False,
+            )
+            send_type = "video"
+
     file_path = _pick_downloaded_file(work_dir)
     return DownloadArtifact(
         path=file_path,
@@ -362,39 +409,37 @@ async def download_selected_format(
 ) -> DownloadArtifact:
     work_dir = work_dir.resolve()
     work_dir.mkdir(parents=True, exist_ok=True)
-    command = _command_base(parsed_input, settings)
     output_template = str(work_dir / "%(title)s [%(id)s].%(ext)s")
 
-    if option.mode == "ytdlp_audio":
-        command.extend(
-            [
-                "--extract-audio",
-                "--audio-format",
-                option.file_ext or "mp3",
-                "--audio-quality",
-                option.audio_quality or "128k",
-                "-o",
-                output_template,
-                parsed_input.source_url,
-            ]
-        )
-        send_type = "audio"
-    else:
-        # Intake'dagi "best_video" varianti o'z selektorini beradi (masalan, 720p gacha).
-        # Boshqa variantlarda eski xatti-harakat saqlanadi (ovozli mp4 kafolati uchun).
-        if option.option_id == "best_video" and option.format_id:
-            format_selector = option.format_id
-        else:
-            format_selector = "best[ext=mp4]/best"
-        command.extend(["-f", format_selector])
-        if not info:
-            # Sarlavha va havolani alohida so'rovsiz, shu yuklash paytida olamiz
-            command.append("--write-info-json")
-        command.extend(["-o", output_template, parsed_input.source_url])
-        send_type = "video"
-
     async with _download_sem():
-        await _run_command(command, cwd=work_dir)
+        if option.mode == "ytdlp_audio":
+            command = _command_base(parsed_input, settings)
+            command.extend(
+                [
+                    "--extract-audio",
+                    "--audio-format",
+                    option.file_ext or "mp3",
+                    "--audio-quality",
+                    option.audio_quality or "128k",
+                    "-o",
+                    output_template,
+                    parsed_input.source_url,
+                ]
+            )
+            await _run_command(command, cwd=work_dir)
+            send_type = "audio"
+        else:
+            selector = _build_video_selector(option.format_id)
+            await _run_video_with_audio_fallback(
+                parsed_input=parsed_input,
+                settings=settings,
+                work_dir=work_dir,
+                format_selector=selector,
+                output_template=output_template,
+                write_info_json=not bool(info),
+            )
+            send_type = "video"
+
     file_path = _pick_downloaded_file(work_dir)
     caption_info = info or _read_info_json(work_dir)
     return DownloadArtifact(

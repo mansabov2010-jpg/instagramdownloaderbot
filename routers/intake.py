@@ -18,19 +18,20 @@ from utils.models import DownloadOption, ParsedInput
 router = Router(name="intake")
 logger = logging.getLogger(__name__)
 
-_URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
-_HOST_RE = re.compile(
-    r"(instagram\.com|instagr\.am|tiktok\.com|youtube\.com|youtu\.be)",
+_LINK_RE = re.compile(
+    r"(?:https?://)?(?:www\.|m\.|vm\.|vt\.)?(?:instagram\.com|instagr\.am|tiktok\.com|youtube\.com|youtu\.be)/\S+",
     re.IGNORECASE,
 )
 
 
 def _extract_url(raw: str) -> str | None:
-    m = _URL_RE.search(raw or "")
+    m = _LINK_RE.search(raw or "")
     if not m:
         return None
-    u = m.group(0).rstrip(").,]>\"'")
-    return u if _HOST_RE.search(u) else None
+    cleaned = m.group(0).rstrip(").,]>\"'")
+    if not cleaned.lower().startswith(("http://", "https://")):
+        return f"https://{cleaned}"
+    return cleaned
 
 
 @router.message(F.text)
@@ -45,14 +46,15 @@ async def intake_message(
 
     url = _extract_url(raw)
     if not url:
+        logger.info("No supported media url in text | chat=%s text=%s", message.chat.id, raw[:60])
         raise SkipHandler
 
+    logger.info("Intake accepted url | chat=%s url=%s", message.chat.id, url)
     status_msg = await message.reply("⏳ Video yuklanmoqda...")
     started_at = datetime.now()
     parsed = ParsedInput(source_url=url)
 
     try:
-        # Alohida probe_url yo'q: u yt-dlp ni ikki marta ishga tushirib, vaqtni ikki baravar oshirardi.
         info: dict = {}
 
         chosen = DownloadOption(
@@ -60,8 +62,7 @@ async def intake_message(
             label="Video",
             send_type="video",
             mode="ytdlp_format",
-            # 720p gacha bitta mp4 fayl: hajmi kichik, yuklash va Telegramga yuborish tez
-            format_id="best[ext=mp4][height<=720]/best[ext=mp4]/best",
+            format_id="bestvideo*+bestaudio/best[ext=mp4]/best",
             file_ext="mp4",
         )
         work_dir = settings.work_dir / f"dl_{message.chat.id}_{message.message_id}"
